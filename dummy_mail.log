@@ -1,0 +1,40 @@
+Dec 15 13:15:02 srv mailu-smtp[4062297]: Dec 15 05:15:02 srv postfix/qmgr[376]: D912210E50D7: removed
+Dec 15 13:15:02 srv mailu-front[4062297]: Dec 15 05:15:02 lmtp(20937): Info: Disconnect from 192.168.203.6: Logged out (state=READY)
+Dec 15 13:15:05 srv mailu-smtp[4062297]: Dec 15 05:15:05 srv postfix/qmgr[376]: EA17210E775E: from=<payables@hollandflower.com>, size=528648, nrcpt=1 (queue active)
+Dec 15 13:15:05 srv mailu-smtp[4062297]: INFO:root:Connect
+Dec 15 13:15:06 srv mailu-admin[4062297]: [2025-12-15 05:15:06,407] WARNING in utils: Unable to lookup the TLSA record for statefarm.com. Is the DNSSEC zone okay on https://dnsviz.net/d/statefarm.com/dnssec/?
+Dec 15 13:15:06 srv mailu-smtp[4062297]: Dec 15 05:15:06 srv postfix/smtp[19390]: warning: TLS policy lookup for statefarm.com/mxb-00104b02.gslb.pphosted.com: non DNSSEC destination
+Dec 15 13:15:06 srv mailu-admin[4062297]: [2025-12-15 05:15:06,414] WARNING in utils: Unable to lookup the TLSA record for statefarm.com. Is the DNSSEC zone okay on https://dnsviz.net/d/statefarm.com/dnssec/?
+Dec 15 13:15:06 srv mailu-smtp[4062297]: Dec 15 05:15:06 srv postfix/smtp[19390]: warning: TLS policy lookup for statefarm.com/mxa-00104b02.gslb.pphosted.com: non DNSSEC destination
+Dec 15 13:15:06 srv mailu-smtp[4062297]: Dec 15 05:15:06 srv postfix/smtp[19390]: EA17210E775E: to=<april.m.aguirre.yhi8@statefarm.com>, relay=none, delay=235620, delays=235619/0.02/0.81/0, dsn=4.7.5, status=deferred (non DNSSEC destination)
+Dec 15 13:15:20 srv mailu-antispam[4062297]: 2025-12-15 05:15:20 #160(controller) <k4k3se>; monitored; rspamd_monitored_dns_cb: DNS reply returned 'no error' for bl.score.senderscore.com while 'no records with this name' was expected when querying for '1.0.0.127.bl.score.senderscore.com'(likely DNS spoofing or BL internal issues)
+Dec 15 13:15:45 srv mailu-fetchmail[4062297]: fetchmail: Server CommonName mismatch: *.carrierzone.com != 216.55.149.40
+Dec 15 13:15:45 srv mailu-fetchmail[4062297]: fetchmail: Server certificate verification error: hostname mismatch
+Dec 15 13:15:45 srv mailu-fetchmail[4062297]: fetchmail: OpenSSL reported: error:0A000086:SSL routines::certificate verify failed
+Dec 15 13:15:45 srv mailu-fetchmail[4062297]: fetchmail: 216.55.149.40: SSL connection failed.
+Dec 15 13:15:45 srv mailu-fetchmail[4062297]: fetchmail: socket error while fetching from alex@hollandflower.com@216.55.149.40
+Dec 15 13:15:46 srv mailu-fetchmail[4062297]: fetchmail: Server CommonName mismatch: *.carrierzone.com != 216.55.149.40
+Dec 15 13:15:46 srv mailu-fetchmail[4062297]: fetchmail: Server certificate verification error: hostname mismatch
+Dec 15 13:15:46 srv mailu-fetchmail[4062297]: fetchmail: OpenSSL reported: error:0A000086:SSL routines::certificate verify failed
+Dec 15 13:15:46 srv mailu-fetchmail[4062297]: fetchmail: 216.55.149.40: SSL connection failed.
+Dec 15 13:15:46 srv mailu-fetchmail[4062297]: fetchmail: socket error while fetching from accounting@hollandflower.com@216.55.149.40
+Dec 15 13:15:46 srv mailu-fetchmail[4062297]: Sleeping for 600 seconds
+Dec 15 13:15:46 srv mailu-fetchmail[4062297]: fetchmail: Query status=2 (SOCKET)
+Dec 15 13:15:46 srv mailu-fetchmail[4062297]:
+Dec 15 13:15:46 srv mailu-fetchmail[4062297]: fetchmail: Query status=2 (SOCKET)
+Dec 15 13:15:46 srv mailu-fetchmail[4062297]:
+Dec 15 13:16:11 srv mailu-front[4062297]: Dec 15 05:16:11 lmtp(20937): Debug: auth-master: conn unix:/run/dovecot/auth-userdb (pid=12,uid=0): Disconnected: Connection closed (fd=15)
+Dec 15 13:16:18 srv mailu-admin[4062297]: [2025-12-15 05:16:18,519] INFO in nginx: Login attempt for: cashier@hollandflower.com/pop3/995 from: 12.37.157.115/28485: success: password
+Dec 15 13:16:18 srv mailu-imap[4062297]: INFO:root:Connect
+Dec 15 13:16:18 srv mailu-imap[4062297]: INFO:root:Connect
+Dec 15 13:16:18 srv mailu-imap[4062297]: Dec 15 05:16:18 pop3-login: Info: Login: user=<cashier@hollandflower.com>, method=PLAIN, rip=12.37.157.115, lip=192.168.203.5, mpid=19677, secured, session=<SwKlav1FRW8MJZ1z>
+Dec 15 13:16:18 srv mailu-front[4062297]: Dec 15 05:16:18 pop3-login: Info: proxy(cashier@hollandflower.com,192.168.203.5:110): Started proxying to <192.168.203.5> (0.027 secs): user=<cashier@hollandflower.com>, method=PLAIN, rip=12.37.157.115, rport=28485, lip=192.168.203.7, lport=995, TLS
+Dec 15 13:16:18 srv mailu-imap[4062297]: Dec 15 05:16:18 pop3(cashier@hollandflower.com)<19677><SwKlav1FRW8MJZ1z>: Info: Disconnected: Logged out top=0/0, retr=0/0, del=0/170, size=273699541
+Dec 15 13:16:18 srv mailu-front[4062297]: Dec 15 05:16:18 pop3-login: Info: proxy(cashier@hollandflower.com,192.168.203.5:110): Disconnected by server (0s idle, in=145, out=5725): user=<cashier@hollandflower.com>, method=PLAIN, rip=12.37.157.115, rport=28485, lip=192.168.203.7, lport=995, TLS
+Dec 15 13:17:02 srv mailu-front[4062297]: 204.76.203.8 - - [15/Dec/2025:05:17:02 -0800] "PROPFIND / HTTP/1.1" 404 146 "http://15.235.73.102:443/" "-"
+Dec 15 13:17:18 srv mailu-front[4062297]: 2025/12/15 05:17:18 [info] 32#32: *6696 client 91.92.240.6:57956 connected to 0.0.0.0:25
+Dec 15 13:17:19 srv mailu-front[4062297]: 2025/12/15 05:17:19 [info] 32#32: *6696 client login failed: "AUTH not supported" while in http auth state, client: 91.92.240.6, server: 0.0.0.0:25, login: "tax"
+Dec 15 13:17:19 srv mailu-admin[4062297]: 192.168.203.7 - - [15/Dec/2025:05:17:19 -0800] "GET /internal/auth/email HTTP/1.0" 200 0 "-" "-"
+Dec 15 13:17:26 srv mailu-admin[4062297]: [2025-12-15 05:17:26,110] INFO in nginx: Login attempt for: 'hr@hollandflower.com'/submission/587 from: 213.142.48.143/36592: failed: account disabled
+Dec 15 13:17:26 srv mailu-front[4062297]: Dec 15 05:17:26 submission-login: Info: Disconnected: Connection closed (no auth attempts in 0 secs): user=<>, rip=3.132.23.201, rport=39512, lip=192.168.203.7, lport=465, TLS
+Dec 15 13:17:28 srv mailu-front[4062297]: Dec 15 05:17:28 submission-login: Info: Disconnected: Aborted login by logging out (auth failed, 1 attempts in 2 secs): user=<hr@hollandflower.com>, method=PLAIN, rip=213.142.48.143, rport=36592, lip=192.168.203.7, lport=587, TLS
