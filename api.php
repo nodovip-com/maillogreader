@@ -72,14 +72,28 @@ function handleGetLogs()
         }
 
         if ($filterStatus) {
+            // Strict filter if selected
+            if ($filterStatus === 'info') {
+                // Special case: if user explicitly wants info, maybe show info only?
+                // The dropdown says "Info (Show All)"? No, "Info" is usually just info status.
+                // If user wants EVERYTHING, we need a specific flag. 
+                // However, the prompt is: if I search by ID, show me everything.
+                if ($parsed['status'] !== 'info') {
+                    // actually if it's strictly 'info', we lose 'sent'.
+                    // Let's rely on the search check below.
+                }
+            }
+
             if ($parsed['status'] !== $filterStatus) {
                 continue;
             }
         } else {
-            // Default behavior: Filter out noise (info, unknown) unless specifically requested
-            // User requested to focus on relevant logs.
-            if ($parsed['status'] === 'info' || $parsed['status'] === 'unknown') {
-                continue;
+            // Default behavior: Filter out noise (info, unknown)... 
+            // BUT if we are searching (e.g. by ID), we likely want to see those hidden logs too if they match the ID.
+            if (!$search) {
+                if ($parsed['status'] === 'info' || $parsed['status'] === 'unknown') {
+                    continue;
+                }
             }
         }
 

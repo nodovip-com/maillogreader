@@ -63,15 +63,20 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- Data Fetching ---
-    async function fetchLogs(reset = false) {
+    async function fetchLogs(reset = false, isBackground = false) {
         if (isFetching) return;
         isFetching = true;
 
-        if (reset) {
+        if (reset && !isBackground) {
             logsBody.innerHTML = '';
             currentOffset = 0;
             allLogsLoaded = false;
             loader.classList.remove('hidden');
+        } else if (reset && isBackground) {
+            // For background refresh, we just reset offset effectively for the fetch, 
+            // but we don't clear UI yet.
+            currentOffset = 0;
+            // We don't change allLogsLoaded yet, trusting the new fetch will determine it.
         }
 
         const search = searchInput.value;
@@ -104,6 +109,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 allLogsLoaded = true; // No more logs to fetch
             }
 
+            // If it was a background refresh, NOW we swap the content
+            if (reset && isBackground) {
+                logsBody.innerHTML = '';
+            }
+
             renderLogs(newLogs, reset);
 
             // Increment offset for next page
@@ -113,7 +123,10 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Fetch logs error:', error);
         } finally {
             isFetching = false;
-            loader.classList.add('hidden');
+            // Only hide loader if it was shown (not background)
+            if (!isBackground) {
+                loader.classList.add('hidden');
+            }
         }
     }
 
@@ -152,6 +165,51 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Ensure "Load More" trigger exists or append observation logic
         addInfiniteScrollTrigger();
+
+        // Trajectory Summary Logic
+        document.querySelectorAll('.trajectory-summary').forEach(e => e.remove());
+
+        // Only show summary if we are searching (likely by ID) and have logs
+        const searchVal = document.getElementById('search-input').value.trim();
+        if (searchVal && logs.length > 0) {
+            let from = 'Unknown';
+            let to = [];
+
+            // Scan logs for From and To
+            // Note: logs array is just the current batch if paginating, 
+            // but usually when searching ID we get all relevant lines in one go if limit format allows
+            // We should scan the Rendered HTML or the incoming data. 
+            // Incoming data 'logs' is safer.
+
+            logs.forEach(l => {
+                if (l.sender && l.sender !== 'Unknown') from = l.sender;
+                if (l.recipient && !to.includes(l.recipient)) to.push(l.recipient);
+            });
+
+            if (from !== 'Unknown' || to.length > 0) {
+                const summaryDiv = document.createElement('div');
+                summaryDiv.className = 'trajectory-summary';
+
+                let toHtml = to.length > 0 ? to.join(', ') : 'Unknown';
+
+                summaryDiv.innerHTML = `
+                    <div class="trajectory-item">
+                        <strong style="color:var(--accent-color)">FROM:</strong> ${escapeHtml(from)}
+                    </div>
+                    <div class="trajectory-arrow">➜</div>
+                    <div class="trajectory-item">
+                        <strong style="color:var(--success-color)">TO:</strong> ${escapeHtml(toHtml)}
+                    </div>
+                    <div style="margin-left:auto; font-size:0.8rem; color:var(--text-secondary)">
+                        Message Trajectory for ID: <span class="highlight-id">${escapeHtml(searchVal)}</span>
+                    </div>
+                `;
+
+                // Insert before table container or inside dashboard
+                const container = document.querySelector('.logs-container');
+                container.insertBefore(summaryDiv, container.firstChild);
+            }
+        }
     }
 
     function toggleDetails(row, log) {
@@ -222,12 +280,30 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // Highlight Queue IDs (Approx: 10-12 hex chars followed by :)
-        html = html.replace(/\b([A-F0-9]{10,12}):/g, (match) => {
-            return `<span class="highlight-id">${match}</span>`;
+        // Add onclick event for filtering
+        html = html.replace(/\b([A-F0-9]{10,12}):/g, (match, id) => {
+            return `<span class="highlight-id" onclick="event.stopPropagation(); filterByID('${id}')">${match}</span>`;
         });
 
         return html;
     }
+
+    // Prepare global function for inline onclick
+    window.filterByID = function (id) {
+        const searchInput = document.getElementById('search-input');
+        const statusFilter = document.getElementById('status-filter');
+
+        searchInput.value = id;
+        statusFilter.value = ''; // Reset status to see all steps
+
+        // Trigger search
+        // Need to access current state variables or just trigger a refresh
+        // We can dispatch an event or call fetchLogs if accessible. 
+        // fetchLogs is inside DOMContentLoaded scope.
+        // We need a way to trigger it.
+        // Easiest: Dispatch input event on search box
+        searchInput.dispatchEvent(new Event('input'));
+    };
 
     function enhanceIPs(container) {
         const ips = container.querySelectorAll('.highlight-ip');
@@ -320,6 +396,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const delay = parseInt(autoRefreshSelect.value);
         if (delay > 0) {
             refreshInterval = setInterval(() => {
+                // Stop refresh if user has details open to avoid closing them
+                if (document.querySelector('.log-detail-row')) {
+                    return;
+                }
+
                 // If user is scrolled down or has search, maybe don't auto refresh aggressively?
                 // For now, just simplistic auto-fetch (resetting view to top)
                 // actually, resetting to top disturbs reading.
@@ -327,7 +408,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // For this MVP: just refresh first page if user is at top.
                 if (logsContainer.scrollTop < 50) {
                     currentOffset = 0;
-                    fetchLogs(true);
+                    fetchLogs(true, true);
                 }
             }, delay);
         }
