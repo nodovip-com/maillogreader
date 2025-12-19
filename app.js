@@ -12,12 +12,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const autoRefreshSelect = document.getElementById('auto-refresh');
     const loader = document.getElementById('loader');
     const currentUserSpan = document.getElementById('current-user');
+    const logsContainer = document.querySelector('.logs-container');
 
     // State
     let refreshInterval = null;
+    let currentLimit = 100; // Limit per fetch for pagination
+    let currentOffset = 0;
+    let isFetching = false;
+    let allLogsLoaded = false;
+
+    // IP Cache to avoid spamming API
+    const ipCache = {};
 
     // --- Authentication ---
-
     loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const username = document.getElementById('username').value;
@@ -34,11 +41,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await res.json();
 
             if (data.success) {
-                // Switch view
                 loginScreen.classList.add('hidden');
                 dashboard.classList.remove('hidden');
                 currentUserSpan.textContent = data.user;
-                fetchLogs();
+                fetchLogs(true); // Initial load
                 startAutoRefresh();
             } else {
                 loginError.textContent = data.error || 'Login failed';
@@ -57,10 +63,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- Data Fetching ---
+    async function fetchLogs(reset = false) {
+        if (isFetching) return;
+        isFetching = true;
 
-    async function fetchLogs() {
-        // Show loader only if table is empty (initial load)
-        if (logsBody.children.length === 0) {
+        if (reset) {
+            logsBody.innerHTML = '';
+            currentOffset = 0;
+            allLogsLoaded = false;
             loader.classList.remove('hidden');
         }
 
@@ -71,13 +81,13 @@ document.addEventListener('DOMContentLoaded', () => {
             action: 'get_logs',
             search: search,
             status: status,
-            limit: 200 // Default limit
+            limit: currentLimit,
+            offset: currentOffset
         });
 
         try {
             const res = await fetch(`api.php?${params.toString()}`);
             if (res.status === 403) {
-                // Session expired
                 location.reload();
                 return;
             }
@@ -88,33 +98,39 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            renderLogs(data.logs || []);
+            const newLogs = data.logs || [];
+
+            if (newLogs.length < currentLimit) {
+                allLogsLoaded = true; // No more logs to fetch
+            }
+
+            renderLogs(newLogs, reset);
+
+            // Increment offset for next page
+            currentOffset += newLogs.length;
+
         } catch (error) {
             console.error('Fetch logs error:', error);
         } finally {
+            isFetching = false;
             loader.classList.add('hidden');
         }
     }
 
-    function renderLogs(logs) {
-        logsBody.innerHTML = '';
-
-        if (logs.length === 0) {
+    function renderLogs(logs, isReset) {
+        if (logs.length === 0 && isReset) {
             logsBody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem; color: var(--text-secondary);">No logs found matching criteria</td></tr>';
             return;
         }
 
         logs.forEach(log => {
             const tr = document.createElement('tr');
+            tr.className = 'log-row';
 
-            // Format Timestamp
             const timestamp = log.timestamp;
-
-            // Format Status Badge
             const statusClass = `status-${log.status}`;
             const statusBadge = `<span class="badge ${statusClass}">${log.status}</span>`;
 
-            // Sender / Recipient Logic
             let senderRecipient = '';
             if (log.sender) senderRecipient += `<div><strong style="color:var(--text-secondary)">From:</strong> ${log.sender}</div>`;
             if (log.recipient) senderRecipient += `<div><strong style="color:var(--text-secondary)">To:</strong> ${log.recipient}</div>`;
@@ -124,33 +140,175 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td style="color: var(--accent-color); font-weight: 500;">${timestamp}</td>
                 <td>${statusBadge}</td>
                 <td>${log.component}</td>
-                <td title="${log.message.replace(/"/g, '&quot;')}">${formatMessage(log.message)}</td>
+                <td title="${log.message.replace(/"/g, '&quot;')}">${escapeHtml(log.message)}</td>
                 <td>${senderRecipient}</td>
             `;
+
+            // Click to toggle details
+            tr.addEventListener('click', () => toggleDetails(tr, log));
+
             logsBody.appendChild(tr);
+        });
+
+        // Ensure "Load More" trigger exists or append observation logic
+        addInfiniteScrollTrigger();
+    }
+
+    function toggleDetails(row, log) {
+        // If next sibling is a detail row, toggle it
+        const next = row.nextElementSibling;
+        if (next && next.classList.contains('log-detail-row')) {
+            next.remove(); // Close
+            row.style.backgroundColor = '';
+            return;
+        }
+
+        // Close other open details (optional, but cleaner)
+        // document.querySelectorAll('.log-detail-row').forEach(el => {
+        //     el.previousElementSibling.style.backgroundColor = '';
+        //     el.remove();
+        // });
+
+        // Open
+        row.style.backgroundColor = 'rgba(88, 166, 255, 0.1)';
+
+        const detailRow = document.createElement('tr');
+        detailRow.className = 'log-detail-row';
+
+        // Highlight logic
+        const highlightedMessage = highlightSyntax(log.message);
+        const highlightedRaw = highlightSyntax(log.raw);
+
+        detailRow.innerHTML = `
+            <td colspan="5" class="detail-content">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+                    <div>
+                        <div style="margin-bottom:0.5rem; font-size:1rem; color:var(--text-primary); border-bottom:1px solid var(--border-color); padding-bottom:0.25rem;">Parsed Data</div>
+                        <div><strong>Timestamp:</strong> ${log.timestamp}</div>
+                        <div><strong>Host:</strong> ${log.host}</div>
+                        <div><strong>Component:</strong> ${log.component}</div>
+                         <div><strong>Queue ID:</strong> <span class="highlight-id">${log.queue_id || 'N/A'}</span></div>
+                        <div><strong>Status:</strong> ${log.status}</div>
+                    </div>
+                    <div>
+                        <div style="margin-bottom:0.5rem; font-size:1rem; color:var(--text-primary); border-bottom:1px solid var(--border-color); padding-bottom:0.25rem;">Raw Message</div>
+                        <div>${highlightedMessage}</div>
+                    </div>
+                </div>
+            </td>
+        `;
+
+        // Insert after clicked row
+        row.parentNode.insertBefore(detailRow, row.nextSibling);
+
+        // Enhance IPs with flags
+        enhanceIPs(detailRow);
+    }
+
+    function highlightSyntax(text) {
+        if (!text) return '';
+        let html = escapeHtml(text);
+
+        // Highlight IPs (IPv4)
+        // Regex: \b(?:\d{1,3}\.){3}\d{1,3}\b
+        html = html.replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, (match) => {
+            return `<span class="highlight-ip" data-ip="${match}">${match}</span>`;
+        });
+
+        // Highlight Emails
+        // Regex: [a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}
+        html = html.replace(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, (match) => {
+            return `<span class="highlight-email">${match}</span>`;
+        });
+
+        // Highlight Queue IDs (Approx: 10-12 hex chars followed by :)
+        html = html.replace(/\b([A-F0-9]{10,12}):/g, (match) => {
+            return `<span class="highlight-id">${match}</span>`;
+        });
+
+        return html;
+    }
+
+    function enhanceIPs(container) {
+        const ips = container.querySelectorAll('.highlight-ip');
+        ips.forEach(async (span) => {
+            const ip = span.dataset.ip;
+            // Filter out internal IPs roughly
+            if (ip.startsWith('192.168.') || ip.startsWith('127.') || ip.startsWith('10.')) return;
+
+            const country = await getCountry(ip);
+            if (country) {
+                const flagSpan = document.createElement('span');
+                flagSpan.className = 'country-flag';
+                flagSpan.textContent = country.flag; // Emoji flag
+                flagSpan.title = country.name;
+                span.appendChild(flagSpan);
+            }
         });
     }
 
-    function formatMessage(msg) {
-        // Highlight critical parts?
-        // Basic escaping
-        const div = document.createElement('div');
-        div.textContent = msg;
-        return div.innerHTML;
+    async function getCountry(ip) {
+        if (ipCache[ip]) return ipCache[ip];
+
+        try {
+            // Using a free IP API (e.g., ipapi.co)
+            // Note: In production, might hit rate limits.
+            const res = await fetch(`https://ipapi.co/${ip}/json/`);
+            const data = await res.json();
+            // ipapi.co returns 'error' property if failed
+            if (data.error) return null;
+
+            // Generate Flag Emoji from Country Code
+            const flag = getFlagEmoji(data.country_code);
+            const result = { name: data.country_name, flag: flag };
+
+            ipCache[ip] = result;
+            return result;
+        } catch (e) {
+            console.warn('IP lookup failed', e);
+            return null;
+        }
+    }
+
+    function getFlagEmoji(countryCode) {
+        if (!countryCode) return '';
+        const codePoints = countryCode
+            .toUpperCase()
+            .split('')
+            .map(char => 127397 + char.charCodeAt());
+        return String.fromCodePoint(...codePoints);
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        return text
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
     }
 
     // --- Controls ---
+    refreshBtn.addEventListener('click', () => {
+        currentOffset = 0; // Reset on manual refresh? Or just prepend?
+        // Simpler for log reader: Reset to show newest
+        fetchLogs(true);
+    });
 
-    refreshBtn.addEventListener('click', fetchLogs);
-
-    // Debounced search
     let debounceTimer;
     searchInput.addEventListener('input', () => {
         clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(fetchLogs, 500);
+        debounceTimer = setTimeout(() => {
+            currentOffset = 0;
+            fetchLogs(true);
+        }, 500);
     });
 
-    statusFilter.addEventListener('change', fetchLogs);
+    statusFilter.addEventListener('change', () => {
+        currentOffset = 0;
+        fetchLogs(true);
+    });
 
     autoRefreshSelect.addEventListener('change', () => {
         startAutoRefresh();
@@ -161,15 +319,51 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const delay = parseInt(autoRefreshSelect.value);
         if (delay > 0) {
-            refreshInterval = setInterval(fetchLogs, delay);
+            refreshInterval = setInterval(() => {
+                // If user is scrolled down or has search, maybe don't auto refresh aggressively?
+                // For now, just simplistic auto-fetch (resetting view to top)
+                // actually, resetting to top disturbs reading.
+                // Ideal: Fetch *newer* logs than top. 
+                // For this MVP: just refresh first page if user is at top.
+                if (logsContainer.scrollTop < 50) {
+                    currentOffset = 0;
+                    fetchLogs(true);
+                }
+            }, delay);
         }
     }
 
-    // Initial check (if already logged in via session but refreshed page)
-    // We can do a quick check_auth call or just try to fetch logs.
-    // Index.php handles the initial visibility class based on PHP session, so we just need to start polling if dashboard is visible.
+    function addInfiniteScrollTrigger() {
+        // Remove old trigger if exists
+        const old = document.getElementById('load-more-trigger');
+        if (old) old.remove();
+
+        if (allLogsLoaded) return;
+
+        const trigger = document.createElement('div');
+        trigger.id = 'load-more-trigger';
+        trigger.className = 'load-more-container';
+        trigger.innerHTML = '<button class="btn" style="width:auto; background:var(--card-bg); border:1px solid var(--border-color);">Load More Logs...</button>';
+
+        trigger.querySelector('button').addEventListener('click', () => {
+            fetchLogs(false);
+        });
+
+        logsBody.parentNode.parentNode.appendChild(trigger);
+    }
+
+    // Infinite scroll listener on container (optional, button is safer for logs)
+    /*
+    logsContainer.addEventListener('scroll', () => {
+        if (logsContainer.scrollTop + logsContainer.clientHeight >= logsContainer.scrollHeight - 50) {
+            fetchLogs(false);
+        }
+    });
+    */
+
+    // Initial load
     if (!dashboard.classList.contains('hidden')) {
-        fetchLogs();
+        fetchLogs(true);
         startAutoRefresh();
     }
 });
