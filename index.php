@@ -55,7 +55,7 @@ session_start();
             <input type="text" id="search-input" class="search-input" placeholder="Buscar por correo, ID, mensaje...">
 
             <select id="status-filter" class="filter-select">
-                <option value="">Todos los Estados</option>
+                <option value="">Relevantes (Default)</option>
                 <option value="sent">Sent</option>
                 <option value="deferred">Deferred</option>
                 <option value="bounced">Bounced</option>
@@ -63,6 +63,8 @@ session_start();
                 <option value="failed">Failed</option>
                 <option value="error">Error</option>
                 <option value="warning">Warning</option>
+                <option value="info">Info (Show All)</option>
+                <option value="unknown">Unknown</option>
             </select>
 
             <select id="auto-refresh" class="filter-select">

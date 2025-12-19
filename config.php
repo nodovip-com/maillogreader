@@ -2,7 +2,7 @@
 // Configura la ruta del archivo de logs.
 // En producción, esto debería apuntar a /var/log/mail.log o similar.
 // Se recomienda usar el archivo dummy_mail.log para pruebas locales.
-define('LOG_FILE_PATH', __DIR__ . '/dummy_mail.log');
+define('LOG_FILE_PATH', __DIR__ . '/messages');
 
 // Configuración de usuarios para acceso al sistema.
 // Formato: 'usuario' => 'contraseña'

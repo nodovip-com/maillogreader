@@ -71,8 +71,16 @@ function handleGetLogs()
             }
         }
 
-        if ($filterStatus && $parsed['status'] !== $filterStatus) {
-            continue;
+        if ($filterStatus) {
+            if ($parsed['status'] !== $filterStatus) {
+                continue;
+            }
+        } else {
+            // Default behavior: Filter out noise (info, unknown) unless specifically requested
+            // User requested to focus on relevant logs.
+            if ($parsed['status'] === 'info' || $parsed['status'] === 'unknown') {
+                continue;
+            }
         }
 
         // Pagination window
