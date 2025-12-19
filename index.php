@@ -39,17 +39,28 @@ session_start();
 
     <!-- Dashboard -->
     <div id="dashboard" class="<?php echo isset($_SESSION['logged_in']) ? '' : 'hidden'; ?>">
-        <header>
-            <h2>
-                <div class="indicator"></div>
-                Live Mail Logs
-            </h2>
-            <div class="user-info items-center flex gap-4">
-                <span id="current-user"
-                    style="color: var(--text-secondary);"><?php echo $_SESSION['user'] ?? ''; ?></span>
-                <button id="logout-btn" class="logout-btn btn">Cerrar Sesión</button>
+        <nav class="navbar">
+            <div class="nav-brand" onclick="window.location.href='index.php'" style="cursor: pointer;">
+                <img src="logo.png" alt="Logo" class="nav-logo">
+                <span class="status-indicator"></span>
+                <?php echo APP_NAME; ?>
             </div>
-        </header>
+            <div class="nav-controls items-center flex gap-4">
+                <div class="user-menu" id="user-menu-trigger">
+                    <div class="user-display">
+                        <span id="current-user"
+                            style="color: var(--text-secondary);"><?php echo $_SESSION['user'] ?? ''; ?></span>
+                        <span style="font-size: 0.8rem;">▼</span>
+                    </div>
+                    <!-- Dropdown -->
+                    <div class="user-dropdown" id="user-dropdown">
+                        <button class="dropdown-item" id="change-password-btn">Cambiar Contraseña</button>
+                        <div class="dropdown-divider"></div>
+                        <button class="dropdown-item" id="logout-btn">Cerrar Sesión</button>
+                    </div>
+                </div>
+            </div>
+        </nav>
 
         <div class="toolbar">
             <input type="text" id="search-input" class="search-input" placeholder="Buscar por correo, ID, mensaje...">

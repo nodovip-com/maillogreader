@@ -27,6 +27,79 @@ body {
     height: 100vh;
     overflow: hidden;
     /* App-like feel */
+    position: relative;
+    z-index: 1;
+}
+
+/* Liquid Glass Background */
+body::before,
+body::after {
+    content: '';
+    position: absolute;
+    width: 600px;
+    height: 600px;
+    border-radius: 50%;
+    z-index: -1;
+    filter: blur(80px);
+    opacity: 0.15;
+    animation: flow 20s infinite alternate;
+}
+
+body::before {
+    background: var(--accent-color);
+    top: -100px;
+    left: -100px;
+}
+
+body::after {
+    background: var(--success-color);
+    bottom: -100px;
+    right: -100px;
+    animation-delay: -10s;
+}
+
+@keyframes flow {
+    0% {
+        transform: translate(0, 0) scale(1);
+    }
+
+    50% {
+        transform: translate(50px, 50px) scale(1.1);
+    }
+
+    100% {
+        transform: translate(-30px, 20px) scale(0.9);
+    }
+}
+
+/* Glassmorphism for containers */
+#login-screen,
+.login-card,
+#dashboard,
+.toolbar,
+header,
+.navbar,
+.logs-table thead {
+    /* Base translucency handled by colors, but we can add backdrop-filter */
+}
+
+.login-card {
+    background: rgba(22, 27, 34, 0.6);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.navbar,
+.toolbar,
+.logs-table thead {
+    background: rgba(22, 27, 34, 0.75) !important;
+    backdrop-filter: blur(12px);
+}
+
+.logs-container {
+    background: transparent;
+    /* Let blobs show through */
 }
 
 /* Utilities */
@@ -149,14 +222,49 @@ header {
     align-items: center;
 }
 
-header h2 {
-    font-size: 1.25rem;
+.navbar {
     display: flex;
+    justify-content: space-between;
     align-items: center;
-    gap: 0.5rem;
+    margin-bottom: 0;
+    /* Removed margin to close gap */
+    padding: 1.5rem 2rem;
+    /* Increased padding for more space */
+    border-bottom: 1px solid var(--border-color);
+    position: relative;
+    /* Ensure z-index works */
+    z-index: 200;
+    /* Higher than toolbar/table header */
 }
 
-.indicator {
+.nav-controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.nav-brand {
+    font-size: 1.4rem;
+    /* Slightly larger */
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    transition: opacity 0.2s;
+}
+
+.nav-brand:hover {
+    opacity: 0.8;
+}
+
+.nav-logo {
+    height: 32px;
+    /* Adjust height as needed */
+    width: auto;
+    object-fit: contain;
+}
+
+.status-indicator {
     width: 8px;
     height: 8px;
     border-radius: 50%;
@@ -262,6 +370,13 @@ header h2 {
     /* Ensure long strings like obscure IDs break */
     max-width: 500px;
     /* Optional: limit width if needed, but wrapping is key */
+}
+
+/* Timestamp column specific: no wrapping */
+.logs-table td:first-child {
+    white-space: nowrap;
+    width: 1%;
+    /* Shrink to fit content */
 }
 
 .logs-table tr:hover {
@@ -445,7 +560,145 @@ header h2 {
     gap: 0.5rem;
 }
 
-.trajectory-arrow {
+/* User Dropdown */
+.user-menu {
+    position: relative;
+    cursor: pointer;
+}
+
+.user-display {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    border-radius: 6px;
+    transition: background 0.2s;
+}
+
+.user-display:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.user-dropdown {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 0.5rem;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    min-width: 180px;
+    display: none;
+    z-index: 100;
+    overflow: hidden;
+    backdrop-filter: blur(10px);
+}
+
+.user-dropdown.show {
+    display: block;
+}
+
+.dropdown-item {
+    display: block;
+    width: 100%;
+    padding: 0.75rem 1rem;
+    text-align: left;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background 0.2s;
+}
+
+.dropdown-item:hover {
+    background: rgba(88, 166, 255, 0.1);
+    color: var(--accent-color);
+}
+
+.dropdown-divider {
+    height: 1px;
+    background: var(--border-color);
+    margin: 0;
+}
+
+/* Modal */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+}
+
+.modal-overlay.show {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.modal {
+    background: var(--card-bg);
+    width: 100%;
+    max-width: 400px;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    padding: 2rem;
+    transform: translateY(20px);
+    transition: transform 0.2s;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+}
+
+.modal-overlay.show .modal {
+    transform: translateY(0);
+}
+
+.modal-header {
+    margin-bottom: 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.modal-close {
+    background: transparent;
+    border: none;
     color: var(--text-secondary);
-    font-size: 1.2rem;
+    font-size: 1.5rem;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+    margin-top: 2rem;
+}
+
+.btn-secondary {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.05);
 }

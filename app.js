@@ -24,7 +24,95 @@ document.addEventListener('DOMContentLoaded', () => {
     // IP Cache to avoid spamming API
     const ipCache = {};
 
+    // --- UI Controls ---
+    const userMenuTrigger = document.getElementById('user-menu-trigger');
+    const userDropdown = document.getElementById('user-dropdown');
+    const changePasswordBtn = document.getElementById('change-password-btn');
+
+    // Modal Elements
+    const modalOverlay = document.getElementById('password-modal-overlay');
+    const modalClose = document.getElementById('modal-close');
+    const modalCancel = document.getElementById('modal-cancel');
+    const changePassForm = document.getElementById('change-password-form');
+    const oldPassInput = document.getElementById('old-password');
+    const newPassInput = document.getElementById('new-password');
+    const passwordMsg = document.getElementById('password-msg');
+
+    // Dropdown Toggle
+    if (userMenuTrigger) {
+        userMenuTrigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            userDropdown.classList.toggle('show');
+        });
+    }
+
+    // Close Dropdown on outside click
+    window.addEventListener('click', () => {
+        if (userDropdown && userDropdown.classList.contains('show')) {
+            userDropdown.classList.remove('show');
+        }
+    });
+
+    // Modal Logic
+    function openModal() {
+        if (!modalOverlay) return;
+        modalOverlay.classList.add('show');
+        if (oldPassInput) oldPassInput.value = '';
+        if (newPassInput) newPassInput.value = '';
+        if (passwordMsg) passwordMsg.style.display = 'none';
+        if (userDropdown) userDropdown.classList.remove('show');
+    }
+
+    function closeModal() {
+        if (modalOverlay) modalOverlay.classList.remove('show');
+    }
+
+    if (changePasswordBtn) changePasswordBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openModal();
+    });
+    if (modalClose) modalClose.addEventListener('click', closeModal);
+    if (modalCancel) modalCancel.addEventListener('click', closeModal);
+
+    // Password Change Submit
+    if (changePassForm) {
+        changePassForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const oldPass = oldPassInput.value;
+            const newPass = newPassInput.value;
+
+            passwordMsg.style.display = 'block';
+            passwordMsg.textContent = 'Updating...';
+            passwordMsg.style.color = 'var(--text-secondary)';
+
+            try {
+                const res = await fetch('api.php?action=change_password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ old_password: oldPass, new_password: newPass })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    passwordMsg.textContent = 'Password changed successfully!';
+                    passwordMsg.style.color = 'var(--success-color)';
+                    setTimeout(() => {
+                        closeModal();
+                    }, 1500);
+                } else {
+                    passwordMsg.textContent = data.error || 'Failed to change password';
+                    passwordMsg.style.color = 'var(--error-color)';
+                }
+            } catch (err) {
+                console.error(err);
+                passwordMsg.textContent = 'Network error';
+                passwordMsg.style.color = 'var(--error-color)';
+            }
+        });
+    }
+
     // --- Authentication ---
+
     loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const username = document.getElementById('username').value;
@@ -57,10 +145,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    logoutBtn.addEventListener('click', async () => {
-        await fetch('api.php?action=logout');
-        location.reload();
-    });
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', async () => {
+            await fetch('api.php?action=logout');
+            location.reload();
+        });
+    }
 
     // --- Data Fetching ---
     async function fetchLogs(reset = false, isBackground = false) {

@@ -5,10 +5,10 @@ session_start();
 
 function login($username, $password)
 {
-    global $users;
+    $users = getUsers();
     if (isset($users[$username]) && $users[$username] === $password) {
-        $_SESSION['user'] = $username;
         $_SESSION['logged_in'] = true;
+        $_SESSION['user'] = $username;
         return true;
     }
     return false;
@@ -27,8 +27,44 @@ function isLoggedIn()
 function requireLogin()
 {
     if (!isLoggedIn()) {
-        header('HTTP/1.0 403 Forbidden');
-        echo json_encode(['error' => 'Authentication required']);
+        http_response_code(403);
+        echo json_encode(['error' => 'Unauthorized']);
         exit;
     }
+}
+
+// User Management Functions
+function getUsers()
+{
+    if (!file_exists(USERS_FILE_PATH)) {
+        return [];
+    }
+    $json = file_get_contents(USERS_FILE_PATH);
+    return json_decode($json, true) ?? [];
+}
+
+function saveUsers($users)
+{
+    file_put_contents(USERS_FILE_PATH, json_encode($users, JSON_PRETTY_PRINT));
+}
+
+function changePassword($username, $oldPassword, $newPassword)
+{
+    $users = getUsers();
+
+    // Check if user exists
+    if (!isset($users[$username])) {
+        return ['success' => false, 'error' => 'User not found'];
+    }
+
+    // Verify old password
+    if ($users[$username] !== $oldPassword) {
+        return ['success' => false, 'error' => 'Invalid current password'];
+    }
+
+    // Update password
+    $users[$username] = $newPassword;
+    saveUsers($users);
+
+    return ['success' => true];
 }

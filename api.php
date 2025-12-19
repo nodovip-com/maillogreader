@@ -20,9 +20,29 @@ switch ($action) {
         requireLogin();
         handleGetLogs();
         break;
+    case 'change_password':
+        requireLogin();
+        handleChangePassword();
+        break;
     default:
         echo json_encode(['error' => 'Invalid action']);
         break;
+}
+
+function handleChangePassword()
+{
+    $input = json_decode(file_get_contents('php://input'), true);
+    $username = $_SESSION['user']; // Always change for current user
+    $oldPass = $input['old_password'] ?? '';
+    $newPass = $input['new_password'] ?? '';
+
+    if (!$oldPass || !$newPass) {
+        echo json_encode(['success' => false, 'error' => 'Missing fields']);
+        return;
+    }
+
+    $result = changePassword($username, $oldPass, $newPass);
+    echo json_encode($result);
 }
 
 function handleLogin()
