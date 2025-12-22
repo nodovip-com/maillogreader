@@ -1,0 +1,7 @@
+config.php
+users.json
+messages
+dummy_mail.log
+test_password_change.php
+.vscode/
+*.log
