@@ -97,5 +97,5 @@ Desde el menú de usuario (esquina superior derecha), puedes actualizar tu contr
 ---
 
 <p align="center">
-  <sub>Desarrollado con ❤️ para Nodovip</sub>
+  <sub>Desarrollado por NodoVIP</sub>
 </p>
