@@ -45,7 +45,8 @@ function getUsers()
 
 function saveUsers($users)
 {
-    file_put_contents(USERS_FILE_PATH, json_encode($users, JSON_PRETTY_PRINT));
+    $result = file_put_contents(USERS_FILE_PATH, json_encode($users, JSON_PRETTY_PRINT));
+    return $result !== false;
 }
 
 function changePassword($username, $oldPassword, $newPassword)
@@ -64,7 +65,9 @@ function changePassword($username, $oldPassword, $newPassword)
 
     // Update password
     $users[$username] = $newPassword;
-    saveUsers($users);
+    if (!saveUsers($users)) {
+        return ['success' => false, 'error' => 'Failed to save new password. Check file permissions.'];
+    }
 
     return ['success' => true];
 }
