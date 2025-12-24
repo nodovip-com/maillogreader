@@ -341,11 +341,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 sortedSymbols.forEach(([key, val]) => {
                     const score = val.score || 0;
                     const toxicityClass = score > 0 ? 'positive' : (score < 0 ? 'negative' : 'neutral');
-                    const title = `${val.description || 'No description'} ${val.options ? ' | ' + val.options.join(', ') : ''}`;
+                    const description = `${val.description || 'No description available for this symbol.'}\nOptions: ${val.options ? val.options.join(', ') : 'None'}`;
 
                     const pill = document.createElement('div');
                     pill.className = `symbol-pill ${toxicityClass}`;
-                    pill.title = title;
+                    pill.setAttribute('data-tooltip', description);
                     pill.innerHTML = `
                         <span class="symbol-name">${key}</span>
                         <span class="symbol-score">${score > 0 ? '+' : ''}${score.toFixed(1)}</span>
