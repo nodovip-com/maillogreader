@@ -2,6 +2,8 @@ config.php
 users.json
 messages
 test_password_change.php
+rspamd_history_archive.json
+settings.json
 .vscode/
 *.log
 !dummy_mail.log

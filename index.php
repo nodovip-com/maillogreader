@@ -54,6 +54,7 @@ session_start();
                     </div>
                     <!-- Dropdown -->
                     <div class="user-dropdown" id="user-dropdown">
+                        <button class="dropdown-item" id="settings-btn">Configuración</button> <!-- NEW -->
                         <button class="dropdown-item" id="change-password-btn">Cambiar Contraseña</button>
                         <div class="dropdown-divider"></div>
                         <button class="dropdown-item" id="logout-btn">Cerrar Sesión</button>
@@ -90,7 +91,7 @@ session_start();
 
         <div class="logs-container">
             <table class="logs-table">
-                <thead>
+                <thead id="logs-header"> <!-- Added ID for dynamic columns -->
                     <tr>
                         <th style="width: 150px;">Timestamp</th>
                         <th style="width: 100px;">Status</th>
@@ -105,6 +106,67 @@ session_start();
             </table>
             <div id="loader" class="loader-container hidden">
                 <div class="spinner"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Password Change Modal -->
+    <div id="password-modal-overlay" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Cambiar Contraseña</h2>
+                <button id="modal-close" class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="change-password-form">
+                    <div class="input-group">
+                        <label>Contraseña Actual</label>
+                        <input type="password" id="old-password" required>
+                    </div>
+                    <div class="input-group">
+                        <label>Nueva Contraseña</label>
+                        <input type="password" id="new-password" required>
+                    </div>
+                    <p id="password-msg" style="margin-bottom:1rem; font-size:0.9rem;"></p>
+                    <div style="display:flex; justify-content:flex-end; gap:1rem;">
+                        <button type="button" id="modal-cancel" class="btn"
+                            style="background:transparent; border:1px solid var(--border-color);">Cancelar</button>
+                        <button type="submit" class="btn">Guardar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal-overlay" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>Configuración</h2>
+                <button id="settings-close" class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="settings-form">
+                    <div class="input-group">
+                        <label>Tipo de Log</label>
+                        <select id="setting-log-type"
+                            style="width:100%; padding:0.8rem; background:var(--input-bg); border:1px solid var(--border-color); color:var(--text-primary); border-radius:6px;">
+                            <option value="syslog">Standard Mail Log (Syslog)</option>
+                            <option value="rspamd">Rspamd History (JSON)</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label>Ruta del Archivo</label>
+                        <input type="text" id="setting-log-path" required placeholder="/var/log/mail.log">
+                        <small style="color:var(--text-secondary)">Ruta absoluta o relativa al sistema.</small>
+                    </div>
+                    <p id="settings-msg" style="margin-bottom:1rem; font-size:0.9rem;"></p>
+                    <div style="display:flex; justify-content:flex-end; gap:1rem;">
+                        <button type="button" id="settings-cancel" class="btn"
+                            style="background:transparent; border:1px solid var(--border-color);">Cancelar</button>
+                        <button type="submit" class="btn">Guardar</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>

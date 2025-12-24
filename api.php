@@ -3,6 +3,8 @@ require_once 'auth.php';
 
 header('Content-Type: application/json');
 
+define('SETTINGS_FILE', __DIR__ . '/settings.json');
+
 $action = $_GET['action'] ?? '';
 
 switch ($action) {
@@ -15,6 +17,14 @@ switch ($action) {
         break;
     case 'check_auth':
         echo json_encode(['logged_in' => isLoggedIn(), 'user' => $_SESSION['user'] ?? null]);
+        break;
+    case 'get_settings':
+        requireLogin(); // Only logged in users can see settings
+        echo json_encode(getSettings());
+        break;
+    case 'save_settings':
+        requireLogin();
+        handleSaveSettings();
         break;
     case 'get_logs':
         requireLogin();
@@ -29,10 +39,47 @@ switch ($action) {
         break;
 }
 
+function getSettings()
+{
+    $defaults = [
+        'log_type' => 'syslog',
+        'log_path' => defined('LOG_FILE_PATH') ? LOG_FILE_PATH : 'dummy_mail.log'
+    ];
+
+    if (file_exists(SETTINGS_FILE)) {
+        $saved = json_decode(file_get_contents(SETTINGS_FILE), true);
+        if (is_array($saved)) {
+            return array_merge($defaults, $saved);
+        }
+    }
+    return $defaults;
+}
+
+function handleSaveSettings()
+{
+    $input = json_decode(file_get_contents('php://input'), true);
+    if (!isset($input['log_type']) || !isset($input['log_path'])) {
+        echo json_encode(['success' => false, 'error' => 'Missing fields']);
+        return;
+    }
+
+    // Basic validation
+    if (!in_array($input['log_type'], ['syslog', 'rspamd'])) {
+        echo json_encode(['success' => false, 'error' => 'Invalid log type']);
+        return;
+    }
+
+    if (file_put_contents(SETTINGS_FILE, json_encode($input, JSON_PRETTY_PRINT))) {
+        echo json_encode(['success' => true]);
+    } else {
+        echo json_encode(['success' => false, 'error' => 'Failed to write settings file']);
+    }
+}
+
 function handleChangePassword()
 {
     $input = json_decode(file_get_contents('php://input'), true);
-    $username = $_SESSION['user']; // Always change for current user
+    $username = $_SESSION['user'];
     $oldPass = $input['old_password'] ?? '';
     $newPass = $input['new_password'] ?? '';
 
@@ -60,13 +107,138 @@ function handleLogin()
 
 function handleGetLogs()
 {
-    if (!file_exists(LOG_FILE_PATH)) {
-        echo json_encode(['error' => 'Log file not found: ' . LOG_FILE_PATH]);
+    $settings = getSettings();
+    $path = $settings['log_path'];
+    $type = $settings['log_type'];
+
+    if (!file_exists($path)) {
+        echo json_encode(['error' => 'Log file not found: ' . $path]);
         exit;
     }
 
-    $lines = file(LOG_FILE_PATH, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-    // Reverse lines to show newest first
+    if ($type === 'rspamd') {
+        processRspamdLogs($path);
+    } else {
+        processSyslogLogs($path);
+    }
+}
+
+function processRspamdLogs($path)
+{
+    // Rspamd logs are usually a large JSON array.
+    // Reading entire file into memory might be heavy if huge, but for now we assume it fits like the text log.
+    $json = file_get_contents($path);
+    $data = json_decode($json, true);
+
+    if (!is_array($data)) {
+        echo json_encode(['error' => 'Invalid JSON in log file']);
+        return;
+    }
+
+    // Reverse to show newest first? 
+    // Usually standard Rspamd history is newest first? Or oldest? 
+    // JSON arrays have order. Assuming we want newest (top) first.
+    // Let's assume the JSON is chronologically appended (oldest first). So reverse it.
+    $data = array_reverse($data);
+
+    $parsedLogs = [];
+    $limit = isset($_GET['limit']) ? intval($_GET['limit']) : 100;
+    $offset = isset($_GET['offset']) ? intval($_GET['offset']) : 0;
+    $search = isset($_GET['search']) ? strtolower($_GET['search']) : '';
+    // Status filter in Rspamd = Action? (reject, no action, etc.)
+    $filterStatus = isset($_GET['status']) ? $_GET['status'] : '';
+
+    $count = 0;
+    $totalProcessed = 0;
+
+    foreach ($data as $entry) {
+        $parsed = parseRspamdEntry($entry);
+
+        // Search
+        if ($search) {
+            $searchable = strtolower(json_encode($parsed));
+            if (strpos($searchable, $search) === false)
+                continue;
+        }
+
+        // Status Filter
+        if ($filterStatus) {
+            // Mapping UI status to Rspamd actions
+            // UI: sent, error, deferred, info
+            // Rspamd: 'no action' (~sent/info), 'reject' (error), 'soft reject' (deferred), 'add header' (info/rewrite)
+
+            // Normalize for filter checking
+            $entryAction = strtolower($parsed['status']); // using mapped status
+            // Simple mapping check
+            if ($filterStatus === 'error' && $entryAction !== 'reject')
+                continue;
+            if ($filterStatus === 'sent' && $entryAction !== 'no action')
+                continue;
+            // For now, loose filtering or just exact match if user types explicit action
+            if ($filterStatus !== 'info' && strpos($entryAction, $filterStatus) === false && $filterStatus !== 'unknown') {
+                // Maybe skip strict filtering for Rspamd initial implementation to avoid confusion
+            }
+        }
+
+        if ($totalProcessed >= $offset && $count < $limit) {
+            $parsedLogs[] = $parsed;
+            $count++;
+        }
+        $totalProcessed++;
+
+        if ($count >= $limit)
+            break;
+    }
+
+    echo json_encode(['logs' => $parsedLogs, 'count' => count($parsedLogs), 'type' => 'rspamd']);
+}
+
+function parseRspamdEntry($entry)
+{
+    // Map Rspamd JSON to our internal structure
+    $timestamp = date('d-M-Y H:i:s', $entry['unix_time']);
+    $action = $entry['action'];
+
+    // Map action to status classes
+    $status = 'info';
+    if ($action === 'reject')
+        $status = 'error';
+    elseif ($action === 'no action')
+        $status = 'success';
+    elseif ($action === 'soft reject' || $action === 'greylist')
+        $status = 'deferred';
+
+    $sender = $entry['sender_mime'] ?? $entry['sender_smtp'] ?? 'unknown';
+    $recipients = $entry['rcpt_mime'] ?? $entry['rcpt_smtp'] ?? [];
+    $recipient = is_array($recipients) ? implode(', ', $recipients) : $recipients;
+
+    return [
+        'timestamp' => $timestamp,
+        'host' => $entry['ip'] ?? 'unknown',
+        'component' => 'rspamd',
+        'message' => $entry['subject'] ?? '(No Subject)',
+        'status' => $status, // For color coding
+        'action' => $action, // Real action name
+        'score' => $entry['score'] ?? 0,
+        'symbols' => $entry['symbols'] ?? [],
+        'queue_id' => $entry['message-id'] ?? '',
+        'sender' => $sender,
+        'recipient' => $recipient,
+        'size' => $entry['size'] ?? 0,
+        'user' => $entry['user'] ?? '',
+        'scan_time' => $entry['time_real'] ?? 0
+    ];
+}
+
+function processSyslogLogs($path)
+{
+    if (!file_exists($path)) {
+        // Fallback for empty/missing
+        echo json_encode(['logs' => [], 'count' => 0]);
+        return;
+    }
+
+    $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
     $lines = array_reverse($lines);
 
     $parsedLogs = [];
@@ -83,70 +255,38 @@ function handleGetLogs()
         if (!$parsed)
             continue;
 
-        // Filtering
         if ($search) {
             $jsonParsed = json_encode($parsed);
-            if (strpos(strtolower($jsonParsed), $search) === false) {
+            if (strpos(strtolower($jsonParsed), $search) === false)
                 continue;
-            }
         }
 
         if ($filterStatus) {
-            // Strict filter if selected
-            if ($filterStatus === 'info') {
-                // Special case: if user explicitly wants info, maybe show info only?
-                // The dropdown says "Info (Show All)"? No, "Info" is usually just info status.
-                // If user wants EVERYTHING, we need a specific flag. 
-                // However, the prompt is: if I search by ID, show me everything.
-                if ($parsed['status'] !== 'info') {
-                    // actually if it's strictly 'info', we lose 'sent'.
-                    // Let's rely on the search check below.
-                }
+            if ($filterStatus === 'info' && $parsed['status'] !== 'info') {
+                // loose logic
             }
-
-            if ($parsed['status'] !== $filterStatus) {
+            if ($parsed['status'] !== $filterStatus)
                 continue;
-            }
         } else {
-            // Default behavior: Filter out noise (info, unknown)... 
-            // BUT if we are searching (e.g. by ID), we likely want to see those hidden logs too if they match the ID.
-            if (!$search) {
-                if ($parsed['status'] === 'info' || $parsed['status'] === 'unknown') {
-                    continue;
-                }
-            }
+            if (!$search && ($parsed['status'] === 'info' || $parsed['status'] === 'unknown'))
+                continue;
         }
 
-        // Pagination window
         if ($totalProcessed >= $offset && $count < $limit) {
             $parsedLogs[] = $parsed;
             $count++;
         }
         $totalProcessed++;
-
         if ($count >= $limit)
-            break; // Optimization: stop after limit reached (if not simple paging)
-        // Note: For true pagination with accurate total counts we'd need to parse everything, but for logs usually infinite scroll/load more is okay.
+            break;
     }
 
-    echo json_encode(['logs' => $parsedLogs, 'count' => count($parsedLogs)]);
+    echo json_encode(['logs' => $parsedLogs, 'count' => count($parsedLogs), 'type' => 'syslog']);
 }
 
 function parseLogLine($line)
 {
-    // Regex based on the provided sample:
-    // Dec 15 13:15:05 srv mailu-smtp[4062297]: Dec 15 05:15:05 srv postfix/qmgr[376]: EA17210E775E: from=<...>, size=..., nrcpt=1 (queue active)
-
-    // We try to capture the component and message.
-    // The format seems to vary slightly, but generally starts with Syslog Header.
-
-    // Pattern explanation:
-    // ^([A-M][a-z]{2}\s+\d+\s\d{2}:\d{2}:\d{2})\s+(\S+)\s+([^:]+):\s+(.*)$
-    // 1: Timestamp (Dec 15 13:15:05)
-    // 2: Host (srv)
-    // 3: Service/Component (mailu-smtp[4062297])
-    // 4: Message (Dec 15 05:15:05 srv postfix/qmgr[376]: EA17210E775E: ...)
-
+    // Existing regex logic
     if (preg_match('/^([A-M][a-z]{2}\s+\d+\s\d{2}:\d{2}:\d{2})\s+(\S+)\s+([^:]+):\s+(.*)$/', $line, $matches)) {
         $log = [
             'raw' => $line,
@@ -154,47 +294,40 @@ function parseLogLine($line)
             'host' => $matches[2],
             'component' => $matches[3],
             'message' => $matches[4],
-            'status' => 'info', // Default
+            'status' => 'info',
             'queue_id' => '',
             'sender' => '',
             'recipient' => ''
         ];
 
-        // Further parsing of the message to extract details
         $message = $log['message'];
 
-        // Extract Queue ID if present (hexdigit string followed by colon)
         if (preg_match('/([A-F0-9]{10,12}):/', $message, $qMatches)) {
             $log['queue_id'] = $qMatches[1];
         }
 
-        // Extract Status
         if (preg_match('/status=([a-zA-Z]+)/', $message, $sMatches)) {
-            $log['status'] = $sMatches[1]; // deferred, sent, bounced, etc.
+            $log['status'] = $sMatches[1];
         } elseif (preg_match('/warning:/i', $message)) {
             $log['status'] = 'warning';
         } elseif (preg_match('/error:/i', $message) || preg_match('/failed/i', $message)) {
             $log['status'] = 'error';
         }
 
-        // Extract Sender (from=<...>)
         if (preg_match('/from=<([^>]+)>/', $message, $fMatches)) {
             $log['sender'] = $fMatches[1];
         }
 
-        // Extract Recipient (to=<...>)
         if (preg_match('/to=<([^>]+)>/', $message, $tMatches)) {
             $log['recipient'] = $tMatches[1];
         }
 
-        // Login attempts
         if (preg_match('/Login attempt for:\s+[\'"]?([^\s\'"\/]+)/', $message, $lMatches)) {
-            $log['sender'] = $lMatches[1]; // Treat user as sender for login logs
-            if (preg_match('/success/', $message)) {
+            $log['sender'] = $lMatches[1];
+            if (preg_match('/success/', $message))
                 $log['status'] = 'success';
-            } elseif (preg_match('/failed/', $message)) {
+            elseif (preg_match('/failed/', $message))
                 $log['status'] = 'failed';
-            }
         }
 
         return $log;

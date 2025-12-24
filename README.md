@@ -1,6 +1,6 @@
 # 🦅 Mail Log Reader Pro
 
-> **Una interfaz moderna, elegante y en tiempo real para analizar logs de correo (Postfix/Syslog).**
+> **Una interfaz moderna, elegante y en tiempo real para analizar logs de correo (Postfix/Syslog & Rspamd).**
 
 Mail Log Reader Pro transforma archivos de logs crudos y difíciles de leer en un dashboard interactivo, visual y potente. Diseñado para administradores de sistemas que necesitan monitorear el flujo de correos con estilo y eficiencia.
 
@@ -9,12 +9,15 @@ Mail Log Reader Pro transforma archivos de logs crudos y difíciles de leer en u
 ## ✨ Características Principales
 
 *   **🎨 Diseño Premium "Liquid Glass"**: Interfaz oscura moderna con efectos de desenfoque y transparencias.
+*   **📂 Multi-Motor de Logs**:
+    *   **Syslog Universal**: Compatible con logs estándar de Postfix/Sendmail.
+    *   **⚡ Rspamd Integration**: Soporte nativo para `rspamd_history_json`. Visualiza **Scores**, **Acciones** y **Símbolos** con indicadores de toxicidad codificados por color.
 *   **⏱️ Monitoreo en Tiempo Real**: Actualización automática de logs sin recargar la página (Polling silencioso).
 *   **🔍 Búsqueda Inteligente**:
     *   Filtrado instantáneo por Remitente, Destinatario o Contenido.
     *   **Traza de Mensajes**: Al buscar por `Queue ID`, visualiza gráficamente el flujo `FROM -> TO`.
 *   **🌍 Geolocalización de IPs**: Detecta automáticamente el país y muestra la bandera correspondiente para las IPs en los logs.
-*   **📂 Vista Detallada**: Expande cualquier log para ver el mensaje crudo vs. analizado y metadatos extendidos.
+*   **⚙️ Configuración Dinámica**: Cambia fácilmente entre tipos de log y rutas de archivo desde la interfaz gráfica, sin editar código.
 *   **🛡️ Gestión de Usuarios**:
     *   Sistema de autenticación simple y seguro.
     *   Gestión de contraseñas integrada.
@@ -43,22 +46,18 @@ Sigue estos pasos para desplegar el proyecto en tu servidor:
     cp users.sample.json users.json
     ```
 
-3.  **Editar `config.php`**
-    Abre `config.php` y ajusta la ruta a tu archivo de logs:
-    ```php
-    define('LOG_FILE_PATH', '/var/log/mail.log'); // Ruta absoluta a tu log
-    ```
+    *Nota: `settings.json` se creará automáticamente cuando guardes la configuración desde la UI.*
 
-4.  **Permisos (¡Importante!)**
+3.  **Permisos (¡Importante!)**
     El servidor web (www-data/apache/nginx) necesita permisos para:
-    *   **Leer** el archivo de logs definido en `config.php`.
-    *   **Escribir** en `users.json` (para cambiar contraseñas).
+    *   **Leer** los archivos de logs que configures.
+    *   **Escribir** en `users.json` (para usuarios) y `settings.json` (para configuración del sistema).
 
     ```bash
     # Ejemplo de permisos (ajustar según tu entorno)
     chown www-data:www-data users.json
+    chown www-data:www-data .  # Para permitir crear settings.json si no existe
     chmod 660 users.json
-    chmod +r /var/log/mail.log
     ```
 
 ---
@@ -67,23 +66,19 @@ Sigue estos pasos para desplegar el proyecto en tu servidor:
 
 ### 1. Dashboard Principal
 Al acceder, verás los logs más recientes.
-*   **Colores de Estado**:
-    *   🟢 **Sent**: Enviado correctamente.
-    *   🔴 **Bounced/Error**: Error en el envío.
-    *   🟡 **Deferred**: Temporalmente retrasado.
-    *   🔵 **Info**: Información general del sistema.
+*   **Modo Syslog**: Muestra Timestamp, Status (Sent/Deferred/Error), Componente y Mensaje.
+*   **Modo Rspamd**: Muestra Score, Action (Reject/No Action), Subject y Símbolos de Spam.
 
-### 2. Filtrado y Búsqueda
-Usa la barra superior para buscar cualquier texto.
-*   **Tip Pro**: Pega un `Queue ID` (ej: `34F2A600Z`) para aislar automáticamente toda la traza de ese correo específico. Aparecerá un resumen de la trayectoria en la parte superior.
+### 2. Panel de Configuración
+Desde el menú de usuario (arriba a la derecha), accede a **Configuración**:
+*   Selecciona el tipo de log (`Standard Mail Log` o `Rspamd History`).
+*   Define la ruta absoluta al archivo (ej: `/var/log/rspamd/history.json`).
 
-### 3. Detalles Técnicos
-Haz clic en cualquier fila para desplegar los detalles.
-*   Las **Direcciones IP** y **Emails** se resaltan automáticamente.
-*   Pasa el mouse sobre las banderas para ver el nombre del país.
-
-### 4. Cambio de Contraseña
-Desde el menú de usuario (esquina superior derecha), puedes actualizar tu contraseña de forma segura.
+### 3. Detalles Avanzados
+Haz clic en cualquier fila para desplegar:
+*   **IPs Enriquecidas**: Banderas de países automáticas.
+*   **Traza de ID**: Flujo visual de mensajes.
+*   **Explorador de Símbolos (Rspamd)**: Píldoras de colores (Rojo=Spam, Verde=Ham) con descripciones al pasar el mouse.
 
 ---
 
@@ -92,7 +87,7 @@ Desde el menú de usuario (esquina superior derecha), puedes actualizar tu contr
 *   **PHP**: 7.4 o superior.
 *   **Servidor Web**: Apache, Nginx o IIS.
 *   **Navegador**: Cualquiera moderno (Chrome, Edge, Firefox).
-*   **Dependencias**: Ninguna (No requiere Composer ni Node.js para correr). Uses Vanilla JS/CSS.
+*   **Dependencias**: Ninguna (Uses Vanilla JS/CSS).
 
 ---
 

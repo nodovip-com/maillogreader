@@ -6,6 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const loginError = document.getElementById('login-error');
     const logoutBtn = document.getElementById('logout-btn');
     const logsBody = document.getElementById('logs-body');
+    const logsHeader = document.getElementById('logs-header'); // New ID
     const searchInput = document.getElementById('search-input');
     const statusFilter = document.getElementById('status-filter');
     const refreshBtn = document.getElementById('refresh-btn');
@@ -16,143 +17,203 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // State
     let refreshInterval = null;
-    let currentLimit = 100; // Limit per fetch for pagination
+    let currentLimit = 100;
     let currentOffset = 0;
     let isFetching = false;
     let allLogsLoaded = false;
+    let currentLogType = 'syslog'; // Default (will be updated from backend)
 
-    // IP Cache to avoid spamming API
+    // IP Cache
     const ipCache = {};
 
     // --- UI Controls ---
     const userMenuTrigger = document.getElementById('user-menu-trigger');
     const userDropdown = document.getElementById('user-dropdown');
+
+    // --- Modals ---
+    // Password
     const changePasswordBtn = document.getElementById('change-password-btn');
+    const passModal = document.getElementById('password-modal-overlay');
+    const passClose = document.getElementById('modal-close');
+    const passCancel = document.getElementById('modal-cancel');
+    const passForm = document.getElementById('change-password-form');
 
-    // Modal Elements
-    const modalOverlay = document.getElementById('password-modal-overlay');
-    const modalClose = document.getElementById('modal-close');
-    const modalCancel = document.getElementById('modal-cancel');
-    const changePassForm = document.getElementById('change-password-form');
-    const oldPassInput = document.getElementById('old-password');
-    const newPassInput = document.getElementById('new-password');
-    const passwordMsg = document.getElementById('password-msg');
+    // Settings
+    const settingsBtn = document.getElementById('settings-btn');
+    const settingsModal = document.getElementById('settings-modal-overlay');
+    const settingsClose = document.getElementById('settings-close');
+    const settingsCancel = document.getElementById('settings-cancel');
+    const settingsForm = document.getElementById('settings-form');
 
-    // Dropdown Toggle
+    // --- Toggle Menu ---
     if (userMenuTrigger) {
         userMenuTrigger.addEventListener('click', (e) => {
             e.stopPropagation();
             userDropdown.classList.toggle('show');
         });
     }
-
-    // Close Dropdown on outside click
     window.addEventListener('click', () => {
-        if (userDropdown && userDropdown.classList.contains('show')) {
+        if (userDropdown && userDropdown.classList.contains('show')) userDropdown.classList.remove('show');
+    });
+
+    // --- Password Modal Logic ---
+    function openPassModal() {
+        if (passModal) {
+            passModal.classList.add('show');
             userDropdown.classList.remove('show');
+            document.getElementById('old-password').value = '';
+            document.getElementById('new-password').value = '';
+            document.getElementById('password-msg').textContent = '';
         }
-    });
-
-    // Modal Logic
-    function openModal() {
-        if (!modalOverlay) return;
-        modalOverlay.classList.add('show');
-        if (oldPassInput) oldPassInput.value = '';
-        if (newPassInput) newPassInput.value = '';
-        if (passwordMsg) passwordMsg.style.display = 'none';
-        if (userDropdown) userDropdown.classList.remove('show');
     }
+    function closePassModal() { if (passModal) passModal.classList.remove('show'); }
 
-    function closeModal() {
-        if (modalOverlay) modalOverlay.classList.remove('show');
-    }
+    if (changePasswordBtn) changePasswordBtn.addEventListener('click', (e) => { e.stopPropagation(); openPassModal(); });
+    if (passClose) passClose.addEventListener('click', closePassModal);
+    if (passCancel) passCancel.addEventListener('click', closePassModal);
 
-    if (changePasswordBtn) changePasswordBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openModal();
-    });
-    if (modalClose) modalClose.addEventListener('click', closeModal);
-    if (modalCancel) modalCancel.addEventListener('click', closeModal);
-
-    // Password Change Submit
-    if (changePassForm) {
-        changePassForm.addEventListener('submit', async (e) => {
+    if (passForm) {
+        passForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const oldPass = oldPassInput.value;
-            const newPass = newPassInput.value;
-
-            passwordMsg.style.display = 'block';
-            passwordMsg.textContent = 'Updating...';
-            passwordMsg.style.color = 'var(--text-secondary)';
+            const msg = document.getElementById('password-msg');
+            msg.textContent = 'Updating...'; msg.style.color = 'var(--text-secondary)';
 
             try {
                 const res = await fetch('api.php?action=change_password', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ old_password: oldPass, new_password: newPass })
+                    method: 'POST', body: JSON.stringify({
+                        old_password: document.getElementById('old-password').value,
+                        new_password: document.getElementById('new-password').value
+                    })
                 });
                 const data = await res.json();
-
                 if (data.success) {
-                    passwordMsg.textContent = 'Password changed successfully!';
-                    passwordMsg.style.color = 'var(--success-color)';
-                    setTimeout(() => {
-                        closeModal();
-                    }, 1500);
+                    msg.textContent = 'Success!'; msg.style.color = 'var(--success-color)';
+                    setTimeout(closePassModal, 1500);
                 } else {
-                    passwordMsg.textContent = data.error || 'Failed to change password';
-                    passwordMsg.style.color = 'var(--error-color)';
+                    msg.textContent = data.error || 'Failed'; msg.style.color = 'var(--error-color)';
                 }
-            } catch (err) {
-                console.error(err);
-                passwordMsg.textContent = 'Network error';
-                passwordMsg.style.color = 'var(--error-color)';
-            }
+            } catch (err) { msg.textContent = 'Error'; }
         });
     }
 
-    // --- Authentication ---
+    // --- Settings Modal Logic ---
+    function openSettingsModal() {
+        if (!settingsModal) return;
+        userDropdown.classList.remove('show');
+        settingsModal.classList.add('show');
+        loadSettings();
+    }
+    function closeSettingsModal() { if (settingsModal) settingsModal.classList.remove('show'); }
 
+    if (settingsBtn) settingsBtn.addEventListener('click', (e) => { e.stopPropagation(); openSettingsModal(); });
+    if (settingsClose) settingsClose.addEventListener('click', closeSettingsModal);
+    if (settingsCancel) settingsCancel.addEventListener('click', closeSettingsModal);
+
+    async function loadSettings() {
+        try {
+            const res = await fetch('api.php?action=get_settings');
+            const data = await res.json();
+            document.getElementById('setting-log-type').value = data.log_type || 'syslog';
+            document.getElementById('setting-log-path').value = data.log_path || '';
+        } catch (e) { console.error(e); }
+    }
+
+    if (settingsForm) {
+        settingsForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const msg = document.getElementById('settings-msg');
+            msg.textContent = 'Saving...';
+
+            const payload = {
+                log_type: document.getElementById('setting-log-type').value,
+                log_path: document.getElementById('setting-log-path').value
+            };
+
+            try {
+                const res = await fetch('api.php?action=save_settings', {
+                    method: 'POST', body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (data.success) {
+                    msg.textContent = 'Saved! Reloading...'; msg.style.color = 'var(--success-color)';
+                    setTimeout(() => {
+                        closeSettingsModal();
+                        currentOffset = 0;
+                        fetchLogs(true); // Refetch with new settings
+                    }, 1000);
+                } else {
+                    msg.textContent = data.error || 'Failed'; msg.style.color = 'var(--error-color)';
+                }
+            } catch (e) { msg.textContent = 'Error'; }
+        });
+    }
+
+    // --- Auth & Init ---
     loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const username = document.getElementById('username').value;
-        const password = document.getElementById('password').value;
-
-        loginError.style.display = 'none';
-
         try {
             const res = await fetch('api.php?action=login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password })
+                method: 'POST', body: JSON.stringify({
+                    username: document.getElementById('username').value,
+                    password: document.getElementById('password').value
+                })
             });
             const data = await res.json();
-
             if (data.success) {
                 loginScreen.classList.add('hidden');
                 dashboard.classList.remove('hidden');
                 currentUserSpan.textContent = data.user;
-                fetchLogs(true); // Initial load
-                startAutoRefresh();
+                initApp();
             } else {
-                loginError.textContent = data.error || 'Login failed';
-                loginError.style.display = 'block';
+                loginError.style.display = 'block'; loginError.textContent = data.error;
             }
-        } catch (error) {
-            console.error('Login error:', error);
-            loginError.textContent = 'Network or server error';
-            loginError.style.display = 'block';
-        }
+        } catch (e) { loginError.style.display = 'block'; loginError.textContent = 'Network Error'; }
     });
 
-    if (logoutBtn) {
-        logoutBtn.addEventListener('click', async () => {
-            await fetch('api.php?action=logout');
-            location.reload();
-        });
+    if (logoutBtn) logoutBtn.addEventListener('click', async () => { await fetch('api.php?action=logout'); location.reload(); });
+
+    // --- Core Logic ---
+    async function initApp() {
+        // Load initial settings to know log type
+        await loadSettingsToState();
+        fetchLogs(true);
+        startAutoRefresh();
     }
 
-    // --- Data Fetching ---
+    async function loadSettingsToState() {
+        try {
+            const res = await fetch('api.php?action=get_settings');
+            const data = await res.json();
+            currentLogType = data.log_type || 'syslog';
+            updateTableHeader();
+        } catch (e) { }
+    }
+
+    function updateTableHeader() {
+        if (!logsHeader) return;
+        if (currentLogType === 'rspamd') {
+            logsHeader.innerHTML = `
+                <tr>
+                    <th style="width: 140px;">Time</th>
+                    <th style="width: 100px;">Score</th>
+                    <th style="width: 140px;">Action</th>
+                    <th>Subject / Details</th>
+                    <th>IP / Sender / Recipient</th>
+                </tr>
+            `;
+        } else {
+            logsHeader.innerHTML = `
+                <tr>
+                    <th style="width: 150px;">Timestamp</th>
+                    <th style="width: 100px;">Status</th>
+                    <th style="width: 120px;">Component</th>
+                    <th>Message / Details</th>
+                    <th>Sender / Recipient</th>
+                </tr>
+            `;
+        }
+    }
+
     async function fetchLogs(reset = false, isBackground = false) {
         if (isFetching) return;
         isFetching = true;
@@ -162,67 +223,46 @@ document.addEventListener('DOMContentLoaded', () => {
             currentOffset = 0;
             allLogsLoaded = false;
             loader.classList.remove('hidden');
-        } else if (reset && isBackground) {
-            // For background refresh, we just reset offset effectively for the fetch, 
-            // but we don't clear UI yet.
-            currentOffset = 0;
-            // We don't change allLogsLoaded yet, trusting the new fetch will determine it.
+            // If settings changed, update header potentially
+            await loadSettingsToState();
         }
-
-        const search = searchInput.value;
-        const status = statusFilter.value;
 
         const params = new URLSearchParams({
             action: 'get_logs',
-            search: search,
-            status: status,
+            search: searchInput.value,
+            status: statusFilter.value,
             limit: currentLimit,
             offset: currentOffset
         });
 
         try {
             const res = await fetch(`api.php?${params.toString()}`);
-            if (res.status === 403) {
-                location.reload();
-                return;
-            }
+            if (res.status === 403) { location.reload(); return; }
             const data = await res.json();
 
-            if (data.error) {
-                console.error('Server error:', data.error);
-                return;
+            // Check if log type changed on backend unexpectedly
+            if (data.type && data.type !== currentLogType) {
+                currentLogType = data.type;
+                updateTableHeader();
             }
 
             const newLogs = data.logs || [];
+            if (newLogs.length < currentLimit) allLogsLoaded = true;
 
-            if (newLogs.length < currentLimit) {
-                allLogsLoaded = true; // No more logs to fetch
-            }
-
-            // If it was a background refresh, NOW we swap the content
-            if (reset && isBackground) {
-                logsBody.innerHTML = '';
-            }
+            if (reset && isBackground) logsBody.innerHTML = ''; // Silent refresh swap
 
             renderLogs(newLogs, reset);
-
-            // Increment offset for next page
             currentOffset += newLogs.length;
 
-        } catch (error) {
-            console.error('Fetch logs error:', error);
-        } finally {
+        } catch (e) { console.error(e); } finally {
             isFetching = false;
-            // Only hide loader if it was shown (not background)
-            if (!isBackground) {
-                loader.classList.add('hidden');
-            }
+            if (!isBackground) loader.classList.add('hidden');
         }
     }
 
     function renderLogs(logs, isReset) {
         if (logs.length === 0 && isReset) {
-            logsBody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem; color: var(--text-secondary);">No logs found matching criteria</td></tr>';
+            logsBody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem; color: var(--text-secondary);">No logs found</td></tr>';
             return;
         }
 
@@ -230,76 +270,46 @@ document.addEventListener('DOMContentLoaded', () => {
             const tr = document.createElement('tr');
             tr.className = 'log-row';
 
-            const timestamp = log.timestamp;
-            const statusClass = `status-${log.status}`;
-            const statusBadge = `<span class="badge ${statusClass}">${log.status}</span>`;
+            if (currentLogType === 'rspamd') {
+                // RSPAMD RENDER
+                const scoreClass = getScoreClass(log.score, log.action);
+                const actionClass = getActionClass(log.action);
 
-            let senderRecipient = '';
-            if (log.sender) senderRecipient += `<div><strong style="color:var(--text-secondary)">From:</strong> ${log.sender}</div>`;
-            if (log.recipient) senderRecipient += `<div><strong style="color:var(--text-secondary)">To:</strong> ${log.recipient}</div>`;
-            if (!log.sender && !log.recipient) senderRecipient = '<span style="color:var(--text-secondary)">-</span>';
+                tr.innerHTML = `
+                    <td style="font-size:0.9rem; color:var(--text-secondary)">${log.timestamp.split(' ')[1]}<br><span style="font-size:0.7rem">${log.timestamp.split(' ')[0]}</span></td>
+                    <td><span class="badge" style="${scoreClass}">${log.score.toFixed(2)}</span></td>
+                    <td><span class="badge ${actionClass}">${log.action}</span></td>
+                    <td title="${escapeHtml(log.message)}">
+                        <div style="font-weight:500; color:var(--text-primary)">${escapeHtml(log.message)}</div>
+                        <div style="font-size:0.8rem; color:var(--text-secondary)">Scan time: ${log.scan_time.toFixed(3)}s</div>
+                    </td>
+                    <td style="font-size:0.85rem">
+                         <div style="font-weight:bold; color:var(--accent-color)">${log.host}</div>
+                         <div style="color:var(--text-secondary)">F: ${escapeHtml(log.sender)}</div>
+                         <div style="color:var(--text-secondary)">T: ${escapeHtml(log.recipient)}</div>
+                    </td>
+                `;
+            } else {
+                // SYSLOG RENDER
+                const statusClass = `status-${log.status}`;
+                const senderRecipient = (log.sender || log.recipient) ?
+                    `<div><strong style="color:var(--text-secondary)">From:</strong> ${log.sender}</div><div><strong style="color:var(--text-secondary)">To:</strong> ${log.recipient}</div>` :
+                    '<span style="color:var(--text-secondary)">-</span>';
 
-            tr.innerHTML = `
-                <td style="color: var(--accent-color); font-weight: 500;">${timestamp}</td>
-                <td>${statusBadge}</td>
-                <td>${log.component}</td>
-                <td title="${log.message.replace(/"/g, '&quot;')}">${escapeHtml(log.message)}</td>
-                <td>${senderRecipient}</td>
-            `;
+                tr.innerHTML = `
+                    <td style="color: var(--accent-color); font-weight: 500;">${log.timestamp}</td>
+                    <td><span class="badge ${statusClass}">${log.status}</span></td>
+                    <td>${log.component}</td>
+                    <td title="${log.message.replace(/"/g, '&quot;')}">${escapeHtml(log.message)}</td>
+                    <td>${senderRecipient}</td>
+                `;
+            }
 
-            // Click to toggle details
             tr.addEventListener('click', () => toggleDetails(tr, log));
-
             logsBody.appendChild(tr);
         });
 
-        // Ensure "Load More" trigger exists or append observation logic
         addInfiniteScrollTrigger();
-
-        // Trajectory Summary Logic
-        document.querySelectorAll('.trajectory-summary').forEach(e => e.remove());
-
-        // Only show summary if we are searching (likely by ID) and have logs
-        const searchVal = document.getElementById('search-input').value.trim();
-        if (searchVal && logs.length > 0) {
-            let from = 'Unknown';
-            let to = [];
-
-            // Scan logs for From and To
-            // Note: logs array is just the current batch if paginating, 
-            // but usually when searching ID we get all relevant lines in one go if limit format allows
-            // We should scan the Rendered HTML or the incoming data. 
-            // Incoming data 'logs' is safer.
-
-            logs.forEach(l => {
-                if (l.sender && l.sender !== 'Unknown') from = l.sender;
-                if (l.recipient && !to.includes(l.recipient)) to.push(l.recipient);
-            });
-
-            if (from !== 'Unknown' || to.length > 0) {
-                const summaryDiv = document.createElement('div');
-                summaryDiv.className = 'trajectory-summary';
-
-                let toHtml = to.length > 0 ? to.join(', ') : 'Unknown';
-
-                summaryDiv.innerHTML = `
-                    <div class="trajectory-item">
-                        <strong style="color:var(--accent-color)">FROM:</strong> ${escapeHtml(from)}
-                    </div>
-                    <div class="trajectory-arrow">➜</div>
-                    <div class="trajectory-item">
-                        <strong style="color:var(--success-color)">TO:</strong> ${escapeHtml(toHtml)}
-                    </div>
-                    <div style="margin-left:auto; font-size:0.8rem; color:var(--text-secondary)">
-                        Message Trajectory for ID: <span class="highlight-id">${escapeHtml(searchVal)}</span>
-                    </div>
-                `;
-
-                // Insert before table container or inside dashboard
-                const container = document.querySelector('.logs-container');
-                container.insertBefore(summaryDiv, container.firstChild);
-            }
-        }
     }
 
     function toggleDetails(row, log) {
@@ -311,230 +321,137 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Close other open details (optional, but cleaner)
-        // document.querySelectorAll('.log-detail-row').forEach(el => {
-        //     el.previousElementSibling.style.backgroundColor = '';
-        //     el.remove();
-        // });
-
         // Open
         row.style.backgroundColor = 'rgba(88, 166, 255, 0.1)';
 
         const detailRow = document.createElement('tr');
         detailRow.className = 'log-detail-row';
 
-        // Highlight logic
-        const highlightedMessage = highlightSyntax(log.message);
-        const highlightedRaw = highlightSyntax(log.raw);
+        let detailContent = '';
 
-        detailRow.innerHTML = `
-            <td colspan="5" class="detail-content">
+        if (currentLogType === 'rspamd') {
+            // Symbols rendering
+            const symbolsContainer = document.createElement('div');
+            symbolsContainer.className = 'symbols-container';
+
+            if (log.symbols) {
+                // Sort symbols by score impact (absolute value desc) to show most relevant first
+                const sortedSymbols = Object.entries(log.symbols).sort((a, b) => Math.abs(b[1].score) - Math.abs(a[1].score));
+
+                sortedSymbols.forEach(([key, val]) => {
+                    const score = val.score || 0;
+                    const toxicityClass = score > 0 ? 'positive' : (score < 0 ? 'negative' : 'neutral');
+                    const title = `${val.description || 'No description'} ${val.options ? ' | ' + val.options.join(', ') : ''}`;
+
+                    const pill = document.createElement('div');
+                    pill.className = `symbol-pill ${toxicityClass}`;
+                    pill.title = title;
+                    pill.innerHTML = `
+                        <span class="symbol-name">${key}</span>
+                        <span class="symbol-score">${score > 0 ? '+' : ''}${score.toFixed(1)}</span>
+                    `;
+                    symbolsContainer.appendChild(pill);
+                });
+            }
+
+            detailContent = `
+                <div style="margin-bottom:0.5rem; color:var(--text-secondary); font-size:0.85rem;">Scored Symbols (Hover for description):</div>
+                ${symbolsContainer.outerHTML}
+            `;
+        } else {
+            // Syslog details (Standard)
+            const highlightedMessage = highlightSyntax(log.message);
+            detailContent = `
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
                     <div>
-                        <div style="margin-bottom:0.5rem; font-size:1rem; color:var(--text-primary); border-bottom:1px solid var(--border-color); padding-bottom:0.25rem;">Parsed Data</div>
-                        <div><strong>Timestamp:</strong> ${log.timestamp}</div>
-                        <div><strong>Host:</strong> ${log.host}</div>
-                        <div><strong>Component:</strong> ${log.component}</div>
+                         <div style="margin-bottom:0.5rem; font-size:1rem; color:var(--text-primary); border-bottom:1px solid var(--border-color); padding-bottom:0.25rem;">Parsed Data</div>
+                         <div><strong>Component:</strong> ${log.component}</div>
+                         <div><strong>Status:</strong> ${log.status}</div>
                          <div><strong>Queue ID:</strong> <span class="highlight-id">${log.queue_id || 'N/A'}</span></div>
-                        <div><strong>Status:</strong> ${log.status}</div>
                     </div>
                     <div>
                         <div style="margin-bottom:0.5rem; font-size:1rem; color:var(--text-primary); border-bottom:1px solid var(--border-color); padding-bottom:0.25rem;">Raw Message</div>
                         <div>${highlightedMessage}</div>
                     </div>
                 </div>
-            </td>
-        `;
+            `;
+        }
 
-        // Insert after clicked row
+        detailRow.innerHTML = `<td colspan="5" class="detail-content">${detailContent}</td>`;
         row.parentNode.insertBefore(detailRow, row.nextSibling);
 
-        // Enhance IPs with flags
-        enhanceIPs(detailRow);
+        // Enhance IPs common logic (for Rspamd host is IP)
+        if (currentLogType === 'rspamd') {
+            // Rspamd standard view already shows IP, maybe enhance detail row if we added raw ip view?
+            // Since we removed raw JSON, we rely on the main table for core info.
+            // We can assume user sees flags in main table if we implemented them there?
+            // Actually app.js renderLogs didn't explicitly run enhanceIPs on the main table cells, only on detail row usually.
+            // Let's run it on the sender/host cells in main row? 
+            // Currently renderLogs doesn't call enhanceIPs on main row.
+        } else {
+            enhanceIPs(detailRow);
+        }
+    }
+
+    // Helpers
+    function getScoreClass(score, action) {
+        if (action === 'reject' || score > 10) return 'color:var(--error-color); border:1px solid var(--error-color);';
+        if (score > 5) return 'color:var(--warning-color); border:1px solid var(--warning-color);';
+        return 'color:var(--success-color); border:1px solid var(--success-color);';
+    }
+
+    function getActionClass(action) {
+        if (action === 'reject') return 'status-error';
+        if (action === 'no action') return 'status-success';
+        return 'status-warning';
     }
 
     function highlightSyntax(text) {
         if (!text) return '';
         let html = escapeHtml(text);
-
-        // Highlight IPs (IPv4)
-        // Regex: \b(?:\d{1,3}\.){3}\d{1,3}\b
-        html = html.replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, (match) => {
-            return `<span class="highlight-ip" data-ip="${match}">${match}</span>`;
-        });
-
-        // Highlight Emails
-        // Regex: [a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}
-        html = html.replace(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, (match) => {
-            return `<span class="highlight-email">${match}</span>`;
-        });
-
-        // Highlight Queue IDs (Approx: 10-12 hex chars followed by :)
-        // Add onclick event for filtering
-        html = html.replace(/\b([A-F0-9]{10,12}):/g, (match, id) => {
-            return `<span class="highlight-id" onclick="event.stopPropagation(); filterByID('${id}')">${match}</span>`;
-        });
-
+        html = html.replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, m => `<span class="highlight-ip" data-ip="${m}">${m}</span>`);
+        html = html.replace(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, m => `<span class="highlight-email">${m}</span>`);
         return html;
-    }
-
-    // Prepare global function for inline onclick
-    window.filterByID = function (id) {
-        const searchInput = document.getElementById('search-input');
-        const statusFilter = document.getElementById('status-filter');
-
-        searchInput.value = id;
-        statusFilter.value = ''; // Reset status to see all steps
-
-        // Trigger search
-        // Need to access current state variables or just trigger a refresh
-        // We can dispatch an event or call fetchLogs if accessible. 
-        // fetchLogs is inside DOMContentLoaded scope.
-        // We need a way to trigger it.
-        // Easiest: Dispatch input event on search box
-        searchInput.dispatchEvent(new Event('input'));
-    };
-
-    function enhanceIPs(container) {
-        const ips = container.querySelectorAll('.highlight-ip');
-        ips.forEach(async (span) => {
-            const ip = span.dataset.ip;
-            // Filter out internal IPs roughly
-            if (ip.startsWith('192.168.') || ip.startsWith('127.') || ip.startsWith('10.')) return;
-
-            const country = await getCountry(ip);
-            if (country) {
-                const flagSpan = document.createElement('span');
-                flagSpan.className = 'country-flag';
-                flagSpan.textContent = country.flag; // Emoji flag
-                flagSpan.title = country.name;
-                span.appendChild(flagSpan);
-            }
-        });
-    }
-
-    async function getCountry(ip) {
-        if (ipCache[ip]) return ipCache[ip];
-
-        try {
-            // Using a free IP API (e.g., ipapi.co)
-            // Note: In production, might hit rate limits.
-            const res = await fetch(`https://ipapi.co/${ip}/json/`);
-            const data = await res.json();
-            // ipapi.co returns 'error' property if failed
-            if (data.error) return null;
-
-            // Generate Flag Emoji from Country Code
-            const flag = getFlagEmoji(data.country_code);
-            const result = { name: data.country_name, flag: flag };
-
-            ipCache[ip] = result;
-            return result;
-        } catch (e) {
-            console.warn('IP lookup failed', e);
-            return null;
-        }
-    }
-
-    function getFlagEmoji(countryCode) {
-        if (!countryCode) return '';
-        const codePoints = countryCode
-            .toUpperCase()
-            .split('')
-            .map(char => 127397 + char.charCodeAt());
-        return String.fromCodePoint(...codePoints);
     }
 
     function escapeHtml(text) {
         if (!text) return '';
-        return text
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;");
+        return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
     }
 
-    // --- Controls ---
-    refreshBtn.addEventListener('click', () => {
-        currentOffset = 0; // Reset on manual refresh? Or just prepend?
-        // Simpler for log reader: Reset to show newest
-        fetchLogs(true);
+    // Common Controls
+    refreshBtn.addEventListener('click', () => { currentOffset = 0; fetchLogs(true); });
+    searchInput.addEventListener('input', (e) => { // debounce logic
+        clearTimeout(refreshInterval); // pause auto refresh while typing? No, just debounce fetch
+        setTimeout(() => { currentOffset = 0; fetchLogs(true); }, 500);
     });
+    statusFilter.addEventListener('change', () => { currentOffset = 0; fetchLogs(true); });
 
-    let debounceTimer;
-    searchInput.addEventListener('input', () => {
-        clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
-            currentOffset = 0;
-            fetchLogs(true);
-        }, 500);
-    });
-
-    statusFilter.addEventListener('change', () => {
-        currentOffset = 0;
-        fetchLogs(true);
-    });
-
-    autoRefreshSelect.addEventListener('change', () => {
-        startAutoRefresh();
-    });
-
+    autoRefreshSelect.addEventListener('change', startAutoRefresh);
     function startAutoRefresh() {
         if (refreshInterval) clearInterval(refreshInterval);
-
         const delay = parseInt(autoRefreshSelect.value);
         if (delay > 0) {
             refreshInterval = setInterval(() => {
-                // Stop refresh if user has details open to avoid closing them
-                if (document.querySelector('.log-detail-row')) {
-                    return;
-                }
-
-                // If user is scrolled down or has search, maybe don't auto refresh aggressively?
-                // For now, just simplistic auto-fetch (resetting view to top)
-                // actually, resetting to top disturbs reading.
-                // Ideal: Fetch *newer* logs than top. 
-                // For this MVP: just refresh first page if user is at top.
-                if (logsContainer.scrollTop < 50) {
-                    currentOffset = 0;
-                    fetchLogs(true, true);
+                if (!document.querySelector('.log-detail-row')) {
+                    if (logsContainer.scrollTop < 50) {
+                        currentOffset = 0; fetchLogs(true, true);
+                    }
                 }
             }, delay);
         }
     }
 
     function addInfiniteScrollTrigger() {
-        // Remove old trigger if exists
-        const old = document.getElementById('load-more-trigger');
-        if (old) old.remove();
-
+        const old = document.getElementById('load-more-trigger'); if (old) old.remove();
         if (allLogsLoaded) return;
-
         const trigger = document.createElement('div');
-        trigger.id = 'load-more-trigger';
-        trigger.className = 'load-more-container';
+        trigger.id = 'load-more-trigger'; trigger.className = 'load-more-container';
         trigger.innerHTML = '<button class="btn" style="width:auto; background:var(--card-bg); border:1px solid var(--border-color);">Load More Logs...</button>';
-
-        trigger.querySelector('button').addEventListener('click', () => {
-            fetchLogs(false);
-        });
-
+        trigger.querySelector('button').addEventListener('click', () => fetchLogs(false));
         logsBody.parentNode.parentNode.appendChild(trigger);
     }
 
-    // Infinite scroll listener on container (optional, button is safer for logs)
-    /*
-    logsContainer.addEventListener('scroll', () => {
-        if (logsContainer.scrollTop + logsContainer.clientHeight >= logsContainer.scrollHeight - 50) {
-            fetchLogs(false);
-        }
-    });
-    */
-
-    // Initial load
-    if (!dashboard.classList.contains('hidden')) {
-        fetchLogs(true);
-        startAutoRefresh();
-    }
+    // Init if already loaded
+    if (!dashboard.classList.contains('hidden')) initApp();
 });
