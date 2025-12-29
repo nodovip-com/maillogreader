@@ -71,3 +71,53 @@ function changePassword($username, $oldPassword, $newPassword)
 
     return ['success' => true];
 }
+
+function hasUsers()
+{
+    $users = getUsers();
+    return !empty($users);
+}
+
+function addUser($username, $password)
+{
+    $users = getUsers();
+    if (isset($users[$username])) {
+        return ['success' => false, 'error' => 'User already exists'];
+    }
+    $users[$username] = $password;
+    if (saveUsers($users)) {
+        return ['success' => true];
+    }
+    return ['success' => false, 'error' => 'Failed to save user'];
+}
+
+function deleteUser($username)
+{
+    $users = getUsers();
+    if (!isset($users[$username])) {
+        return ['success' => false, 'error' => 'User not found'];
+    }
+
+    // Prevent deleting the last user
+    if (count($users) <= 1) {
+        return ['success' => false, 'error' => 'Cannot delete the last user'];
+    }
+
+    unset($users[$username]);
+    if (saveUsers($users)) {
+        return ['success' => true];
+    }
+    return ['success' => false, 'error' => 'Failed to save changes'];
+}
+
+function processFirstUser($username, $password)
+{
+    if (hasUsers()) {
+        return ['success' => false, 'error' => 'Setup already completed'];
+    }
+    $users = [$username => $password];
+    if (saveUsers($users)) {
+        return ['success' => true];
+    }
+    return ['success' => false, 'error' => 'Failed to create admin user. Check permissions.'];
+}

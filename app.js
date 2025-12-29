@@ -148,26 +148,180 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // --- Auth & Init ---
-    loginForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
+    // --- Users Modal Logic ---
+    const usersBtn = document.getElementById('users-btn');
+    const usersModal = document.getElementById('users-modal-overlay');
+    const usersClose = document.getElementById('users-close');
+    const addUserForm = document.getElementById('add-user-form');
+    const usersList = document.getElementById('users-list');
+
+    if (usersBtn) usersBtn.addEventListener('click', (e) => { e.stopPropagation(); openUsersModal(); });
+    if (usersClose) usersClose.addEventListener('click', () => usersModal.classList.remove('show'));
+
+    function openUsersModal() {
+        if (!usersModal) return;
+        userDropdown.classList.remove('show');
+        usersModal.classList.add('show');
+        fetchUsers();
+    }
+
+    async function fetchUsers() {
         try {
-            const res = await fetch('api.php?action=login', {
-                method: 'POST', body: JSON.stringify({
-                    username: document.getElementById('username').value,
-                    password: document.getElementById('password').value
-                })
+            const res = await fetch('api.php?action=get_users');
+            const data = await res.json();
+            if (Array.isArray(data)) {
+                renderUsersList(data);
+            }
+        } catch (e) { }
+    }
+
+    function renderUsersList(users) {
+        usersList.innerHTML = '';
+        users.forEach(u => {
+            const li = document.createElement('li');
+            li.style.padding = '0.5rem 1rem';
+            li.style.borderBottom = '1px solid var(--border-color)';
+            li.style.display = 'flex';
+            li.style.justifyContent = 'space-between';
+            li.style.alignItems = 'center';
+            li.style.fontSize = '0.9rem';
+
+            li.innerHTML = `
+                <span style="color:var(--text-primary)">${escapeHtml(u)}</span>
+                <button class="btn-delete-user" data-user="${escapeHtml(u)}" style="background:transparent; border:none; color:var(--error-color); cursor:pointer; font-size:1.2rem; line-height:1;">&times;</button>
+            `;
+
+            // Delete Listener
+            li.querySelector('.btn-delete-user').addEventListener('click', () => deleteUser(u));
+            usersList.appendChild(li);
+        });
+    }
+
+    async function deleteUser(username) {
+        if (!confirm(`¿Eliminar usuario ${username}?`)) return;
+        try {
+            const res = await fetch('api.php?action=delete_user', {
+                method: 'POST', body: JSON.stringify({ username })
             });
             const data = await res.json();
             if (data.success) {
-                loginScreen.classList.add('hidden');
-                dashboard.classList.remove('hidden');
-                currentUserSpan.textContent = data.user;
+                fetchUsers();
+            } else {
+                alert(data.error);
+            }
+        } catch (e) { }
+    }
+
+    if (addUserForm) {
+        addUserForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const msg = document.getElementById('users-msg');
+            msg.textContent = '';
+
+            const u = document.getElementById('new-username').value;
+            const p = document.getElementById('new-user-pass').value;
+
+            try {
+                const res = await fetch('api.php?action=add_user', {
+                    method: 'POST', body: JSON.stringify({ username: u, password: p })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('new-username').value = '';
+                    document.getElementById('new-user-pass').value = '';
+                    fetchUsers();
+                    msg.style.color = 'var(--success-color)';
+                    msg.textContent = 'Usuario creado.';
+                } else {
+                    msg.style.color = 'var(--error-color)';
+                    msg.textContent = data.error;
+                }
+            } catch (e) { }
+        });
+    }
+
+    // --- Auth & Init ---
+
+    // Check Auth State and Setup requirement immediately
+    (async function checkAuth() {
+        try {
+            const res = await fetch('api.php?action=check_auth');
+            const data = await res.json();
+
+            if (data.setup_required) {
+                // Show Setup Screen
+                if (document.getElementById('setup-screen')) document.getElementById('setup-screen').classList.remove('hidden');
+                if (loginScreen) loginScreen.classList.add('hidden');
+                if (dashboard) dashboard.classList.add('hidden');
+            } else if (data.logged_in) {
+                // Show Dashboard
+                if (document.getElementById('setup-screen')) document.getElementById('setup-screen').classList.add('hidden');
+                if (loginScreen) loginScreen.classList.add('hidden');
+                if (dashboard) dashboard.classList.remove('hidden');
+                if (currentUserSpan) currentUserSpan.textContent = data.user;
                 initApp();
             } else {
-                loginError.style.display = 'block'; loginError.textContent = data.error;
+                // Show Login
+                if (document.getElementById('setup-screen')) document.getElementById('setup-screen').classList.add('hidden');
+                if (loginScreen) loginScreen.classList.remove('hidden');
+                if (dashboard) dashboard.classList.add('hidden');
             }
-        } catch (e) { loginError.style.display = 'block'; loginError.textContent = 'Network Error'; }
+        } catch (e) { console.error('Auth check failed', e); }
+    })();
+
+    // Setup Form
+    const setupForm = document.getElementById('setup-form');
+    if (setupForm) {
+        setupForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const u = document.getElementById('setup-username').value;
+            const p = document.getElementById('setup-password').value;
+            const err = document.getElementById('setup-error');
+
+            try {
+                const res = await fetch('api.php?action=setup_admin', {
+                    method: 'POST', body: JSON.stringify({ username: u, password: p })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    location.reload();
+                } else {
+                    err.style.display = 'block'; err.textContent = data.error;
+                }
+            } catch (e) { err.style.display = 'block'; err.textContent = 'Error'; }
+        });
+    }
+
+    loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+
+        loginError.style.display = 'none';
+
+        try {
+            const res = await fetch('api.php?action=login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                loginScreen.classList.add('hidden');
+                dashboard.classList.remove('hidden');
+                if (currentUserSpan) currentUserSpan.textContent = data.user;
+                fetchLogs(true); // Initial load
+                startAutoRefresh();
+            } else {
+                loginError.textContent = data.error || 'Login failed';
+                loginError.style.display = 'block';
+            }
+        } catch (error) {
+            console.error('Login error:', error);
+            loginError.textContent = 'Network or server error';
+            loginError.style.display = 'block';
+        }
     });
 
     if (logoutBtn) logoutBtn.addEventListener('click', async () => { await fetch('api.php?action=logout'); location.reload(); });

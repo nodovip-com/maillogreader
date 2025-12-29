@@ -16,7 +16,26 @@ switch ($action) {
         echo json_encode(['success' => true]);
         break;
     case 'check_auth':
-        echo json_encode(['logged_in' => isLoggedIn(), 'user' => $_SESSION['user'] ?? null]);
+        echo json_encode([
+            'logged_in' => isLoggedIn(),
+            'user' => $_SESSION['user'] ?? null,
+            'setup_required' => !hasUsers()
+        ]);
+        break;
+    case 'setup_admin':
+        handleSetupAdmin();
+        break;
+    case 'get_users':
+        requireLogin();
+        echo json_encode(array_keys(getUsers()));
+        break;
+    case 'add_user':
+        requireLogin();
+        handleAddUser();
+        break;
+    case 'delete_user':
+        requireLogin();
+        handleDeleteUser();
         break;
     case 'get_settings':
         requireLogin(); // Only logged in users can see settings
@@ -98,11 +117,66 @@ function handleLogin()
     $username = $input['username'] ?? '';
     $password = $input['password'] ?? '';
 
+    // If setup is required, prevent login
+    if (!hasUsers()) {
+        echo json_encode(['success' => false, 'error' => 'Setup required']);
+        return;
+    }
+
     if (login($username, $password)) {
         echo json_encode(['success' => true, 'user' => $username]);
     } else {
         echo json_encode(['success' => false, 'error' => 'Invalid credentials']);
     }
+}
+
+function handleSetupAdmin()
+{
+    $input = json_decode(file_get_contents('php://input'), true);
+    $username = $input['username'] ?? '';
+    $password = $input['password'] ?? '';
+
+    if (!$username || !$password) {
+        echo json_encode(['success' => false, 'error' => 'Missing fields']);
+        return;
+    }
+
+    echo json_encode(processFirstUser($username, $password));
+}
+
+function handleAddUser()
+{
+    $input = json_decode(file_get_contents('php://input'), true);
+    $username = $input['username'] ?? '';
+    $password = $input['password'] ?? '';
+
+    if (!$username || !$password) {
+        echo json_encode(['success' => false, 'error' => 'Missing fields']);
+        return;
+    }
+
+    echo json_encode(addUser($username, $password));
+}
+
+function handleDeleteUser()
+{
+    $input = json_decode(file_get_contents('php://input'), true);
+    $username = $input['username'] ?? '';
+
+    if (!$username) {
+        echo json_encode(['success' => false, 'error' => 'Missing fields']);
+        return;
+    }
+
+    // Prevent self-deletion if basic sanity check needed, but auth.php handles last user check.
+    // UI should block self-deletion maybe? 
+    // Backend:
+    if ($username === $_SESSION['user']) {
+        echo json_encode(['success' => false, 'error' => 'Cannot delete yourself']);
+        return;
+    }
+
+    echo json_encode(deleteUser($username));
 }
 
 function handleGetLogs()

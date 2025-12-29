@@ -17,6 +17,30 @@ session_start();
 
 <body>
 
+    <!-- Setup Screen (Initial Admin Creation) -->
+    <div id="setup-screen" class="hidden">
+        <div class="login-card">
+            <h1>Configuración <span style="color:white">Inicial</span></h1>
+            <p style="color:var(--text-secondary); margin-bottom:1.5rem; font-size:0.9rem;">
+                Bienvenido. No se han detectado usuarios en el sistema. Por favor, crea una cuenta de administrador para
+                comenzar.
+            </p>
+            <form id="setup-form">
+                <div class="input-group">
+                    <label>Nuevo Usuario (Admin)</label>
+                    <input type="text" id="setup-username" required placeholder="admin">
+                </div>
+                <div class="input-group">
+                    <label>Contraseña</label>
+                    <input type="password" id="setup-password" required placeholder="••••••">
+                </div>
+                <button type="submit" class="btn">Crear Administrador</button>
+                <p id="setup-error"
+                    style="color: var(--error-color); margin-top: 1rem; font-size: 0.9rem; display: none;"></p>
+            </form>
+        </div>
+    </div>
+
     <!-- Login Screen -->
     <div id="login-screen" class="<?php echo isset($_SESSION['logged_in']) ? 'hidden' : ''; ?>">
         <div class="login-card">
@@ -54,7 +78,8 @@ session_start();
                     </div>
                     <!-- Dropdown -->
                     <div class="user-dropdown" id="user-dropdown">
-                        <button class="dropdown-item" id="settings-btn">Configuración</button> <!-- NEW -->
+                        <button class="dropdown-item" id="users-btn">Usuarios</button> <!-- NEW -->
+                        <button class="dropdown-item" id="settings-btn">Configuración</button>
                         <button class="dropdown-item" id="change-password-btn">Cambiar Contraseña</button>
                         <div class="dropdown-divider"></div>
                         <button class="dropdown-item" id="logout-btn">Cerrar Sesión</button>
@@ -167,6 +192,36 @@ session_start();
                         <button type="submit" class="btn">Guardar</button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Users Modal -->
+    <div id="users-modal-overlay" class="modal-overlay">
+        <div class="modal" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2>Gestión de Usuarios</h2>
+                <button id="users-close" class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="margin-bottom: 2rem;">
+                    <h3 style="font-size:0.9rem; color:var(--text-secondary); margin-bottom:0.5rem;">Añadir Usuario</h3>
+                    <form id="add-user-form" style="display:flex; gap:0.5rem; align-items:flex-start;">
+                        <input type="text" id="new-username" placeholder="Usuario" required style="flex:1;">
+                        <input type="password" id="new-user-pass" placeholder="Contraseña" required style="flex:1;">
+                        <button type="submit" class="btn" style="width:auto;">+</button>
+                    </form>
+                    <p id="users-msg" style="font-size:0.8rem; margin-top:0.5rem;"></p>
+                </div>
+
+                <h3 style="font-size:0.9rem; color:var(--text-secondary); margin-bottom:0.5rem;">Usuarios Existentes
+                </h3>
+                <div class="users-list-container"
+                    style="background:var(--input-bg); border:1px solid var(--border-color); border-radius:6px; max-height:200px; overflow-y:auto;">
+                    <ul id="users-list" style="list-style:none; padding:0; margin:0;">
+                        <!-- Injected via JS -->
+                    </ul>
+                </div>
             </div>
         </div>
     </div>
