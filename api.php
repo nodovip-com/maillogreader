@@ -56,9 +56,40 @@ switch ($action) {
     case 'get_available_dates':
         handleGetAvailableDates();
         break;
+    case 'get_ip_geo':
+        handleGetIpGeo();
+        break;
     default:
         echo json_encode(['success' => false, 'error' => 'Invalid action']);
         break;
+}
+
+function handleGetIpGeo()
+{
+    $input = json_decode(file_get_contents('php://input'), true);
+    if (!is_array($input)) {
+        echo json_encode([]);
+        return;
+    }
+
+    // Proxy request to ip-api.com (HTTP)
+    // We do this server-side to avoid Mixed Content (HTTPS -> HTTP) errors in the browser.
+    $url = 'http://ip-api.com/batch';
+    $options = [
+        'http' => [
+            'header' => "Content-type: application/json\r\n",
+            'method' => 'POST',
+            'content' => json_encode($input)
+        ]
+    ];
+    $context = stream_context_create($options);
+    $result = @file_get_contents($url, false, $context);
+
+    if ($result === false) {
+        echo json_encode([]);
+    } else {
+        echo $result;
+    }
 }
 
 function handleGetAvailableDates()

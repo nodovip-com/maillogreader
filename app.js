@@ -525,7 +525,8 @@ document.addEventListener('DOMContentLoaded', () => {
         for (let i = 0; i < ipArray.length; i += chunkSize) {
             const chunk = ipArray.slice(i, i + chunkSize);
             try {
-                const res = await fetch('http://ip-api.com/batch', {
+                // Proxy through backend to avoid Mixed Content (HTTPS -> HTTP)
+                const res = await fetch('api.php?action=get_ip_geo', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(chunk.map(ip => ({ query: ip, fields: "query,country,countryCode" })))
