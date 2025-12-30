@@ -480,6 +480,7 @@ function parseLogLine($line)
         $log = [
             'raw' => $line,
             'timestamp' => $matches[1],
+            'unix_time' => strtotime($matches[1]), // Calculated for frontend TZ conversion
             'host' => $matches[2],
             'component' => $matches[3],
             'message' => $matches[4],

@@ -445,6 +445,32 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    function formatTime(unixTime) {
+        if (!unixTime) return '';
+        const date = new Date(unixTime * 1000);
+        // Format: 9:14 pm (GMT-5)
+        // We use Intl.DateTimeFormat for flexibility
+        const timePart = new Intl.DateTimeFormat('default', {
+            hour: 'numeric',
+            minute: 'numeric',
+            second: 'numeric',
+            hour12: true
+        }).format(date);
+
+        const datePart = new Intl.DateTimeFormat('default', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric'
+        }).format(date);
+
+        // Get Timezone offset string (e.g. GMT-5)
+        const offset = -date.getTimezoneOffset() / 60;
+        const offsetStr = `GMT${offset >= 0 ? '+' : ''}${offset}`;
+
+        return `<div style="font-weight:600">${timePart}</div>
+                <div style="font-size:0.75rem; color:var(--text-secondary)">${datePart} (${offsetStr})</div>`;
+    }
+
     async function fetchLogs(reset = false, isBackground = false) {
         if (isFetching) return;
         isFetching = true;
@@ -608,15 +634,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
             } else {
                 // SYSLOG RENDER
-                const statusClass = `status-${log.status}`;
-                const senderRecipient = (log.sender || log.recipient) ?
-                    `<div><strong style="color:var(--text-secondary)">From:</strong> ${log.sender}</div><div><strong style="color:var(--text-secondary)">To:</strong> ${log.recipient}</div>` :
-                    '<span style="color:var(--text-secondary)">-</span>';
+                // Format timestamp locally
+                const timeHtml = log.unix_time ? formatTime(log.unix_time) : (log.timestamp || '-');
+
+                // Determine row class based on status...
+                // (Existing logic)
+                const statusClass = getStatusClass(log.status);
+
+                const senderRecipient = (log.sender || log.recipient)
+                    ? `<div style="font-weight:600">${escapeHtml(log.sender)}</div><div style="color:var(--text-secondary)">${escapeHtml(log.recipient)}</div>`
+                    : '<span style="color:var(--text-secondary)">-</span>';
 
                 tr.innerHTML = `
-                    <td style="color: var(--accent-color); font-weight: 500;">${log.timestamp}</td>
+                    <td style="white-space:nowrap">${timeHtml}</td>
                     <td><span class="badge ${statusClass}">${log.status}</span></td>
-                    <td>${log.component}</td>
+                    <td>${escapeHtml(log.component || '-')}</td>
                     <td title="${log.message.replace(/"/g, '&quot;')}">${escapeHtml(log.message)}</td>
                     <td>${senderRecipient}</td>
                 `;
