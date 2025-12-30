@@ -73,6 +73,9 @@ function handleGetIpGeo()
     }
 
     // Proxy request to ip-api.com (HTTP)
+    // Release session lock to allow parallel requests
+    session_write_close();
+
     // We do this server-side to avoid Mixed Content (HTTPS -> HTTP) errors in the browser.
     $url = 'http://ip-api.com/batch';
     $options = [

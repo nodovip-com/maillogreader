@@ -9,17 +9,21 @@ Mail Log Reader Pro transforms raw, hard-to-read log files into a powerful, inte
 ## ✨ Key Features
 
 *   **🎨 Premium "Liquid Glass" Design**: Modern dark interface with blur effects and transparencies.
+*   **🌍 Interactive Threat Map**: 
+    *   **Cyber Visualization**: Real-time 2D world map with animated "flight paths" (IP-to-Server).
+    *   **Map Interactions**: Click dots or lines to see log details in a refined "Mini Liquid Glass" popup.
+    *   **Live Statistics**: Automatic "Top Countries" leaderboard and real-time traffic feed.
 *   **🔒 Enterprise Security**:
     *   **MFA (2FA)**: Secure login with Time-based One-Time Password (TOTP) compatible with Google Authenticator/Authy.
     *   **Secure Storage**: Bcrypt password hashing to protect user credentials.
 *   **📅 Smart Date Filtering**:
-    *   **Interactive Calendar**: Easily filter logs by specific dates. automatically highlighting days with available data.
-*   **🌍 IP Geolocation**:
-    *   **Automatic Detection**: Displays country flags and names next to IP addresses.
-    *   **Smart Caching**: Minimized API usage for lightning-fast performance.
+    *   **Interactive Calendar**: Easily filter logs by specific dates, automatically highlighting days with available data (Flatpickr integration).
 *   **📂 Multi-Log Engine**:
     *   **Universal Syslog**: Compatible with standard Postfix/Sendmail logs.
     *   **⚡ Rspamd Integration**: Native support for `rspamd_history_json`. Visualizes **Scores**, **Actions**, and **Symbols** with color-coded toxicity indicators.
+*   **⚡ High-Performance Architecture**:
+    *   **Parallel Geolocation**: Releases PHP session locks to allow simultaneous IP resolution.
+    *   **Incremental Rendering**: Visual feedback as data arrives; no waiting for full-batch completion.
 *   **⏱️ Real-Time Monitoring**: Automatic log updates without page reloads (Silent Polling).
 *   **⚙️ Dynamic Configuration**: Switch log types and paths directly from the UI.
 *   **🛡️ User Management**:
@@ -60,20 +64,25 @@ Mail Log Reader Pro transforms raw, hard-to-read log files into a powerful, inte
 *   **Syslog Mode**: Displays Timestamp, Status (Sent/Deferred/Error), Component, and Message.
 *   **Rspamd Mode**: Displays Score, Action (Reject/No Action), Subject, and Spam Symbols.
 
-### 2. Configuration
+### 2. Threat Map
+Toggle the **Map View** to visualize geographic data:
+*   **Real-time Attack Map**: See where mail is originating from across the globe.
+*   **Animated Paths**: Lines connect source countries to the server, highlighting traffic patterns.
+*   **Interactive Details**: Click any node on the map to trigger a detailed "Liquid Glass" information card showing Subject, Sender, and Score.
+
+### 3. Configuration
 Access **Settings** from the user menu:
 *   Select Log Type (`Standard Mail Log` or `Rspamd History`).
 *   Set absolute path (e.g., `/var/log/rspamd/history.json`).
 
-### 3. Security & MFA
+### 4. Security & MFA
 *   On first launch, you will be prompted to create an Admin account.
 *   Scan the **QR Code** with your Authenticator App to enable MFA.
 *   Subsequent logins require username, password, and the 6-digit code.
 
-### 4. Advanced Details
-Click any row to reveal:
-*   **Geo Flags**: Visual country indicators for IPs.
-*   **Message Trace**: Visual flow of the message ID.
+### 5. Advanced Analysis
+*   **Geo Flags**: Visual country indicators for IPs (shown in List & Map views).
+*   **Queue ID Filter**: Click any Queue ID to filter logs and trace an entire message trajectory.
 *   **Symbol Explorer (Rspamd)**: Detailed descriptions of spam scores.
 
 ---

@@ -14,6 +14,10 @@ session_start();
         rel="stylesheet">
     <!-- Flatpickr -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <!-- Map Lib -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts-gl/dist/echarts-gl.min.js"></script> <!-- Optional 3D -->
+
     <!-- Main Style (loaded last to override) -->
     <link rel="stylesheet" href="style.css">
 </head>
@@ -136,6 +140,14 @@ session_start();
             </select>
 
             <button id="refresh-btn" class="btn" style="width: auto; padding: 0.5rem 1.5rem;">Refresh</button>
+            <button id="toggle-map-btn" class="btn btn-outline" style="margin-left:10px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M1 6v13l7-4 7 4 7-4V2l-7 4-7-4-7 4z"></path>
+                    <path d="M8 2v13"></path>
+                    <path d="M16 6v13"></path>
+                </svg>
+                Map View
+            </button>
         </div>
 
         <div class="logs-container">
@@ -157,108 +169,133 @@ session_start();
                 <div class="spinner"></div>
             </div>
         </div>
-    </div>
+        <!-- Map View -->
+        <div id="map-view" class="hidden" style="position:relative; height:calc(100vh - 130px); width:100%;">
+            <div id="main-map" style="width:100%; height:100%;"></div>
 
-    <!-- Password Change Modal -->
-    <div id="password-modal-overlay" class="modal-overlay">
-        <div class="modal">
-            <div class="modal-header">
-                <h2>Change Password</h2>
-                <button id="modal-close" class="modal-close">&times;</button>
+            <!-- Map Sidebar -->
+            <div class="map-sidebar">
+                <h3>Top Countries</h3>
+                <div id="map-stats-content">
+                    <!-- Injected via JS -->
+                    <div style="padding:1rem; color:var(--text-secondary); text-align:center;">Gathering Data...</div>
+                </div>
+
+                <h3 style="margin-top:20px;">Live Traffic</h3>
+                <div id="map-live-feed" style="font-size:0.8rem; height:150px; overflow:hidden; position:relative;">
+                    <!-- Moving feed -->
+                </div>
             </div>
-            <div class="modal-body">
-                <form id="change-password-form">
-                    <div class="input-group">
-                        <label>Current Password</label>
-                        <input type="password" id="old-password" required>
-                    </div>
-                    <div class="input-group">
-                        <label>New Password</label>
-                        <input type="password" id="new-password" required>
-                    </div>
-                    <p id="password-msg" style="margin-bottom:1rem; font-size:0.9rem;"></p>
-                    <div style="display:flex; justify-content:flex-end; gap:1rem;">
-                        <button type="button" id="modal-cancel" class="btn"
-                            style="background:transparent; border:1px solid var(--border-color);">Cancel</button>
-                        <button type="submit" class="btn">Save</button>
-                    </div>
-                </form>
+
+            <!-- Popup for Line Details -->
+            <div id="map-popup" class="hidden map-detail-popup">
+                <button id="map-popup-close"
+                    style="position:absolute; top:10px; right:10px; background:none; border:none; color:var(--text-secondary); cursor:pointer; font-size:1.2rem;">&times;</button>
+                <div id="map-popup-content"></div>
             </div>
         </div>
-    </div>
 
-    <!-- Settings Modal -->
-    <div id="settings-modal-overlay" class="modal-overlay">
-        <div class="modal">
-            <div class="modal-header">
-                <h2>Settings</h2>
-                <button id="settings-close" class="modal-close">&times;</button>
-            </div>
-            <div class="modal-body">
-                <form id="settings-form">
-                    <div class="input-group">
-                        <label>Log Type</label>
-                        <select id="setting-log-type"
-                            style="width:100%; padding:0.8rem; background:var(--input-bg); border:1px solid var(--border-color); color:var(--text-primary); border-radius:6px;">
-                            <option value="syslog">Standard Mail Log (Syslog)</option>
-                            <option value="rspamd">Rspamd History (JSON)</option>
-                        </select>
-                    </div>
-                    <div class="input-group">
-                        <label>Log File Path</label>
-                        <input type="text" id="setting-log-path" required placeholder="/var/log/mail.log">
-                        <small style="color:var(--text-secondary)">Absolute or relative path.</small>
-                    </div>
-                    <p id="settings-msg" style="margin-bottom:1rem; font-size:0.9rem;"></p>
-                    <div style="display:flex; justify-content:flex-end; gap:1rem;">
-                        <button type="button" id="settings-cancel" class="btn"
-                            style="background:transparent; border:1px solid var(--border-color);">Cancel</button>
-                        <button type="submit" class="btn">Save</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <!-- Users Modal -->
-    <div id="users-modal-overlay" class="modal-overlay">
-        <div class="modal" style="max-width: 500px;">
-            <div class="modal-header">
-                <h2>User Management</h2>
-                <button id="users-close" class="modal-close">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div style="margin-bottom: 2rem;">
-                    <h3 style="font-size:0.9rem; color:var(--text-secondary); margin-bottom:0.5rem;">Add User</h3>
-                    <form id="add-user-form" style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:flex-start;">
-                        <input type="text" id="new-username" placeholder="Username" required style="flex:1;">
-                        <input type="password" id="new-user-pass" placeholder="Password" required style="flex:1;">
-                        <button type="submit" class="btn" style="width:auto;">+</button>
+        <!-- Password Change Modal -->
+        <div id="password-modal-overlay" class="modal-overlay">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2>Change Password</h2>
+                    <button id="modal-close" class="modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="change-password-form">
+                        <div class="input-group">
+                            <label>Current Password</label>
+                            <input type="password" id="old-password" required>
+                        </div>
+                        <div class="input-group">
+                            <label>New Password</label>
+                            <input type="password" id="new-password" required>
+                        </div>
+                        <p id="password-msg" style="margin-bottom:1rem; font-size:0.9rem;"></p>
+                        <div style="display:flex; justify-content:flex-end; gap:1rem;">
+                            <button type="button" id="modal-cancel" class="btn"
+                                style="background:transparent; border:1px solid var(--border-color);">Cancel</button>
+                            <button type="submit" class="btn">Save</button>
+                        </div>
                     </form>
-                    <p id="users-msg" style="font-size:0.8rem; margin-top:0.5rem;"></p>
-                    <!-- New User QR Area -->
-                    <div id="new-user-qr-container"
-                        style="display:none; text-align:center; margin-top:1rem; background:rgba(0,0,0,0.2); padding:1rem; border-radius:6px;">
-                        <p style="font-size:0.85rem; color:white; margin-bottom:0.5rem;">Scan MFA Code for <b
-                                id="new-user-name-display"></b>:</p>
-                        <img id="new-user-qr-img"
-                            style="border: 4px solid white; border-radius: 4px; max-width: 120px;">
-                    </div>
-                </div>
-
-                <h3 style="font-size:0.9rem; color:var(--text-secondary); margin-bottom:0.5rem;">Existing Users</h3>
-                <div class="users-list-container"
-                    style="background:var(--input-bg); border:1px solid var(--border-color); border-radius:6px; max-height:200px; overflow-y:auto;">
-                    <ul id="users-list" style="list-style:none; padding:0; margin:0;">
-                        <!-- Injected via JS -->
-                    </ul>
                 </div>
             </div>
         </div>
-    </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-    <script src="app.js"></script>
+        <!-- Settings Modal -->
+        <div id="settings-modal-overlay" class="modal-overlay">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2>Settings</h2>
+                    <button id="settings-close" class="modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="settings-form">
+                        <div class="input-group">
+                            <label>Log Type</label>
+                            <select id="setting-log-type"
+                                style="width:100%; padding:0.8rem; background:var(--input-bg); border:1px solid var(--border-color); color:var(--text-primary); border-radius:6px;">
+                                <option value="syslog">Standard Mail Log (Syslog)</option>
+                                <option value="rspamd">Rspamd History (JSON)</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label>Log File Path</label>
+                            <input type="text" id="setting-log-path" required placeholder="/var/log/mail.log">
+                            <small style="color:var(--text-secondary)">Absolute or relative path.</small>
+                        </div>
+                        <p id="settings-msg" style="margin-bottom:1rem; font-size:0.9rem;"></p>
+                        <div style="display:flex; justify-content:flex-end; gap:1rem;">
+                            <button type="button" id="settings-cancel" class="btn"
+                                style="background:transparent; border:1px solid var(--border-color);">Cancel</button>
+                            <button type="submit" class="btn">Save</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Users Modal -->
+        <div id="users-modal-overlay" class="modal-overlay">
+            <div class="modal" style="max-width: 500px;">
+                <div class="modal-header">
+                    <h2>User Management</h2>
+                    <button id="users-close" class="modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div style="margin-bottom: 2rem;">
+                        <h3 style="font-size:0.9rem; color:var(--text-secondary); margin-bottom:0.5rem;">Add User</h3>
+                        <form id="add-user-form"
+                            style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:flex-start;">
+                            <input type="text" id="new-username" placeholder="Username" required style="flex:1;">
+                            <input type="password" id="new-user-pass" placeholder="Password" required style="flex:1;">
+                            <button type="submit" class="btn" style="width:auto;">+</button>
+                        </form>
+                        <p id="users-msg" style="font-size:0.8rem; margin-top:0.5rem;"></p>
+                        <!-- New User QR Area -->
+                        <div id="new-user-qr-container"
+                            style="display:none; text-align:center; margin-top:1rem; background:rgba(0,0,0,0.2); padding:1rem; border-radius:6px;">
+                            <p style="font-size:0.85rem; color:white; margin-bottom:0.5rem;">Scan MFA Code for <b
+                                    id="new-user-name-display"></b>:</p>
+                            <img id="new-user-qr-img"
+                                style="border: 4px solid white; border-radius: 4px; max-width: 120px;">
+                        </div>
+                    </div>
+
+                    <h3 style="font-size:0.9rem; color:var(--text-secondary); margin-bottom:0.5rem;">Existing Users</h3>
+                    <div class="users-list-container"
+                        style="background:var(--input-bg); border:1px solid var(--border-color); border-radius:6px; max-height:200px; overflow-y:auto;">
+                        <ul id="users-list" style="list-style:none; padding:0; margin:0;">
+                            <!-- Injected via JS -->
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+        <script src="app.js"></script>
 </body>
 
 </html>

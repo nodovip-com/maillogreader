@@ -45,6 +45,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const settingsCancel = document.getElementById('settings-cancel');
     const settingsForm = document.getElementById('settings-form');
 
+    // Map State
+    let isMapView = false;
+    let mapChart = null;
+
     // --- Toggle Menu ---
     if (userMenuTrigger) {
         userMenuTrigger.addEventListener('click', (e) => {
@@ -407,6 +411,144 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const dateFilter = document.getElementById('date-filter');
     const clearDateBtn = document.getElementById('clear-date');
+    const toggleMapBtn = document.getElementById('toggle-map-btn');
+    const mapView = document.getElementById('map-view');
+
+    toggleMapBtn.addEventListener('click', () => {
+        isMapView = !isMapView;
+        if (isMapView) {
+            logsContainer.classList.add('hidden');
+            mapView.classList.remove('hidden');
+            toggleMapBtn.innerHTML = `
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M4 6h16M4 12h16M4 18h16"></path>
+                </svg> List View`;
+
+            if (!mapChart) initMap();
+            setTimeout(() => { mapChart && mapChart.resize(); }, 100);
+            updateMap(currentLogsData); // Use global store
+
+            // Close Popup on background click?
+            mapChart.getZr().on('click', (params) => {
+                if (!params.target) document.getElementById('map-popup').classList.add('hidden');
+            });
+        } else {
+            logsContainer.classList.remove('hidden');
+            mapView.classList.add('hidden');
+            toggleMapBtn.innerHTML = `
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M1 6v13l7-4 7 4 7-4V2l-7 4-7-4-7 4z"></path>
+                    <path d="M8 2v13"></path>
+                    <path d="M16 6v13"></path>
+                </svg> Map View`;
+        }
+    });
+
+    let currentLogsData = []; // Store for map visualization
+
+    // --- Map Logic ---
+    function initMap() {
+        const dom = document.getElementById('main-map');
+        mapChart = echarts.init(dom, 'dark', { renderer: 'canvas' });
+
+        const option = {
+            backgroundColor: 'transparent',
+            globe: {
+                baseTexture: 'https://echarts.apache.org/examples/data-gl/asset/world.topo.bathy.200401.jpg',
+                heightTexture: 'https://echarts.apache.org/examples/data-gl/asset/world.topo.bathy.200401.jpg',
+                displacementScale: 0.04,
+                shading: 'color',
+                environment: '#0d1117',
+                atmosphere: { show: true },
+                viewControl: { autoRotate: true, autoRotateSpeed: 5 }
+            },
+            series: []
+        };
+        // Use 2D map for better performance and "Cyber" look instead of heavy Globe?
+        // User asked for "Cyber Attack Map", usually 2D flat with flight paths is clearer.
+        // Let's switch to Geo (2D) map which is standard ECharts.
+
+        const geoOption = {
+            backgroundColor: 'transparent',
+            geo: {
+                map: 'world',
+                roam: true,
+                label: { show: false },
+                itemStyle: {
+                    areaColor: '#161b22',
+                    borderColor: '#30363d'
+                },
+                emphasis: {
+                    itemStyle: { areaColor: '#2b3137' },
+                    label: { show: false }
+                }
+            },
+            series: []
+        };
+
+        // Load World Map JSON if not included? ECharts usually needs map registration.
+        // Since we are using CDN, we might need the map json.
+        // ECharts doesn't include map geojson by default.
+        // We can fetch it.
+        fetch('https://raw.githubusercontent.com/apache/echarts/master/test/data/map/json/world.json')
+            .then(r => r.json())
+            .then(geoJson => {
+                echarts.registerMap('world', geoJson);
+                mapChart.setOption(geoOption);
+
+                // Event Listener for Lines/Points
+                mapChart.on('click', function (params) {
+                    if (params.componentType === 'series' && params.data && params.data.log) {
+                        showMapPopup(params.data.log);
+                    }
+                });
+            });
+    }
+
+    // Popup Logic
+    const mapPopup = document.getElementById('map-popup');
+    const mapPopupContent = document.getElementById('map-popup-content');
+    const mapPopupClose = document.getElementById('map-popup-close');
+
+    if (mapPopupClose) mapPopupClose.addEventListener('click', () => mapPopup.classList.add('hidden'));
+
+    function showMapPopup(log) {
+        if (!mapPopup) return;
+
+        const ip = log.host || 'Unknown';
+        const country = ipCache[ip] ? ipCache[ip].country : 'Unknown';
+        const scoreColor = log.score > 5 ? 'var(--warning-color)' : (log.score > 10 ? 'var(--error-color)' : 'var(--success-color)');
+
+        mapPopupContent.innerHTML = `
+            <div class="detail-header">
+                ${escapeHtml(log.message || 'No Subject')}
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">From</span>
+                <span class="detail-value" title="${escapeHtml(log.sender)}">${escapeHtml(log.sender)}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">To</span>
+                <span class="detail-value" title="${escapeHtml(log.recipient)}">${escapeHtml(log.recipient)}</span>
+            </div>
+             <div class="detail-item">
+                <span class="detail-label">Origin</span>
+                <span class="detail-value">
+                    ${ipCache[ip] && ipCache[ip].code ? `<img src="https://flagcdn.com/w40/${ipCache[ip].code.toLowerCase()}.png" style="width:16px; margin-right:4px; vertical-align:middle;">` : ''}
+                    ${country} (${ip})
+                </span>
+            </div>
+             <div class="detail-item">
+                <span class="detail-label">Status</span>
+                <span class="detail-value" style="color:${log.status === 'error' || log.action === 'reject' ? '#ff4d4f' : '#3fb950'}">${log.action || log.status}</span>
+            </div>
+             <div class="detail-item">
+                <span class="detail-label">Score</span>
+                <span class="detail-value" style="color:${scoreColor}">${log.score ? log.score.toFixed(2) : 'N/A'}</span>
+            </div>
+        `;
+        mapPopup.classList.remove('hidden');
+    }
 
     // ...
 
@@ -504,6 +646,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 updateTableHeader();
             }
 
+            // If map view is active, trigger extra geo fetch even if implicit limit?
+            // Actually enhanceLogsWithGeo handles it. 
+            // We just need to make sure we fetch geo for ALL logs in the batch, which we do.
+
             const newLogs = data.logs || [];
             if (newLogs.length < currentLimit) allLogsLoaded = true;
 
@@ -542,35 +688,178 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (ipsToFetch.size === 0) {
             updateGeoUI();
+            if (isMapView) updateMap(currentLogsData); // Ensure map updates even if cached
             return;
         }
 
         const ipArray = Array.from(ipsToFetch);
-        const chunkSize = 100;
+        const chunkSize = 50; // Smaller chunks for faster first-paint
+        const chunks = [];
 
         for (let i = 0; i < ipArray.length; i += chunkSize) {
-            const chunk = ipArray.slice(i, i + chunkSize);
+            chunks.push(ipArray.slice(i, i + chunkSize));
+        }
+
+        // Parallel execution with incremental updates
+        const promises = chunks.map(async (chunk) => {
             try {
-                // Proxy through backend to avoid Mixed Content (HTTPS -> HTTP)
+                // Proxy through backend
                 const res = await fetch('api.php?action=get_ip_geo', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(chunk.map(ip => ({ query: ip, fields: "query,country,countryCode" })))
+                    body: JSON.stringify(chunk.map(ip => ({ query: ip, fields: "query,country,countryCode,lat,lon" })))
                 });
                 const data = await res.json();
+
+                let hasNewData = false;
                 if (Array.isArray(data)) {
                     data.forEach(item => {
-                        if (item.query) {
+                        if (item.query && !ipCache[item.query]) {
                             ipCache[item.query] = {
                                 country: item.country || 'Unknown',
-                                code: item.countryCode || ''
+                                code: item.countryCode || '',
+                                lat: item.lat || 0,
+                                lon: item.lon || 0
                             };
+                            hasNewData = true;
+                        } else if (item.query && ipCache[item.query]) {
+                            // Update existing if missing lat/lon (e.g. from previous run without it)
+                            if (!ipCache[item.query].lat && item.lat) {
+                                ipCache[item.query].lat = item.lat;
+                                ipCache[item.query].lon = item.lon;
+                                hasNewData = true;
+                            }
                         }
                     });
                 }
+
+                if (hasNewData) {
+                    updateGeoUI();
+                    if (isMapView) updateMap(currentLogsData); // Incremental paint
+                }
             } catch (e) { console.error('Geo Fetch Error', e); }
+        });
+
+        await Promise.all(promises);
+    }
+
+    // --- Map Update Logic ---
+    // Server Location (Placeholder: US East). 
+    // Ideally we'd fetch this from server or config.
+    const SERVER_LAT = 40.7128;
+    const SERVER_LON = -74.0060;
+
+    // Helper to get lat/lon from country code (Approximation)
+    // Since we only get Country Code from FlagCDN/IP-API (we requested fields "query,country,countryCode"), 
+    // we don't strictly have lat/lon for every IP unless we ask for it.
+    // OPTIMIZATION: Update fetch body to request 'lat,lon' from ip-api.
+
+    // Changing enhanceLogsWithGeo request to include lat,lon
+
+    // ... (Wait, I need to update enhanceLogsWithGeo first to fetch lat/lon)
+
+    function updateMap(logs) {
+        if (!mapChart || !logs) return;
+
+        const linesData = [];
+        const effectScatterData = [];
+        const countryCount = {};
+
+        logs.forEach(log => {
+            const ip = log.host || (log.message.match(/\b(?:\d{1,3}\.){3}\d{1,3}\b/) || [])[0];
+            if (!ip || !ipCache[ip] || !ipCache[ip].lat) return;
+
+            const info = ipCache[ip];
+            const country = info.country;
+
+            // Stats
+            countryCount[country] = (countryCount[country] || 0) + 1;
+
+            // Line: Source -> Server
+            linesData.push({
+                coords: [
+                    [info.lon, info.lat], // From
+                    [SERVER_LON, SERVER_LAT] // To
+                ],
+                lineStyle: {
+                    color: log.status === 'error' || log.action === 'reject' ? '#ff4d4f' : '#3fb950'
+                },
+                log: log // Attach Log Data
+            });
+
+            // Point
+            effectScatterData.push({
+                name: ip,
+                value: [info.lon, info.lat],
+                itemStyle: { color: log.status === 'error' || log.action === 'reject' ? '#ff4d4f' : '#3fb950' },
+                log: log // Add log to scatter point for click event
+            });
+        });
+
+        // Add Server Node
+        effectScatterData.push({
+            name: "Server",
+            value: [SERVER_LON, SERVER_LAT],
+            itemStyle: { color: '#58a6ff' },
+            symbolSize: 15
+        });
+
+        mapChart.setOption({
+            series: [
+                {
+                    type: 'effectScatter',
+                    coordinateSystem: 'geo',
+                    zlevel: 2,
+                    rippleEffect: { brushType: 'stroke' },
+                    symbolSize: 10,
+                    itemStyle: { color: '#3fb950' },
+                    data: effectScatterData
+                },
+                {
+                    type: 'lines',
+                    zlevel: 1,
+                    effect: {
+                        show: true,
+                        period: 4,
+                        trailLength: 0.5, // Long trails for "Liquid" feel
+                        color: '#fff',
+                        symbolSize: 3
+                    },
+                    lineStyle: {
+                        curveness: 0.2,
+                        opacity: 0.1,
+                        width: 1
+                    },
+                    data: linesData
+                }
+            ]
+        });
+
+        updateMapStats(countryCount);
+    }
+
+    function updateMapStats(counts) {
+        const container = document.getElementById('map-stats-content');
+        if (!container) return;
+
+        const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+        if (sorted.length === 0) {
+            container.innerHTML = '<div style="text-align:center; padding:1rem; color:var(--text-secondary)">No localized data yet</div>';
+            return;
         }
-        updateGeoUI();
+
+        const max = sorted[0][1];
+        container.innerHTML = sorted.map(([country, count]) => `
+            <div class="country-stat">
+                <div class="country-stat-row">
+                    <span>${country}</span>
+                    <span style="color:var(--text-secondary)">${count}</span>
+                </div>
+                <div class="country-stat-bar">
+                    <div class="country-stat-fill" style="width: ${(count / max) * 100}%"></div>
+                </div>
+            </div>
+        `).join('');
     }
 
     function updateGeoUI() {
@@ -604,6 +893,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     function renderLogs(logs, isReset) {
+        currentLogsData = logs; // Store for map
+        if (isMapView) updateMap(logs);
+
         if (logs.length === 0 && isReset) {
             logsBody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem; color: var(--text-secondary);">No logs found</td></tr>';
             return;
@@ -759,6 +1051,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (action === 'reject') return 'status-error';
         if (action === 'no action') return 'status-success';
         return 'status-warning';
+    }
+
+    function getStatusClass(status) {
+        if (status === 'error' || status === 'failed') return 'status-error';
+        if (status === 'success') return 'status-success';
+        if (status === 'warning') return 'status-warning';
+        return 'status-info';
     }
 
     function highlightSyntax(text) {
