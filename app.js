@@ -614,22 +614,28 @@ document.addEventListener('DOMContentLoaded', () => {
             tr.className = 'log-row';
 
             if (currentLogType === 'rspamd') {
-                // RSPAMD RENDER
-                const scoreClass = getScoreClass(log.score, log.action);
+                // RSPAMD RENDER (New JSON structure)
+
+                // Format timestamp locally
+                const timeHtml = log.unix_time ? formatTime(log.unix_time) : (log.timestamp || '-');
+
+                const scoreClass = getScoreClass(log.score);
                 const actionClass = getActionClass(log.action);
 
                 tr.innerHTML = `
-                    <td style="font-size:0.9rem; color:var(--text-secondary)">${log.timestamp.split(' ')[1]}<br><span style="font-size:0.7rem">${log.timestamp.split(' ')[0]}</span></td>
+                    <td style="white-space:nowrap">${timeHtml}</td>
                     <td><span class="badge" style="${scoreClass}">${log.score.toFixed(2)}</span></td>
                     <td><span class="badge ${actionClass}">${log.action}</span></td>
-                    <td title="${escapeHtml(log.message)}">
-                        <div style="font-weight:500; color:var(--text-primary)">${escapeHtml(log.message)}</div>
-                        <div style="font-size:0.8rem; color:var(--text-secondary)">Scan time: ${log.scan_time.toFixed(3)}s</div>
+                    <td title="${log.message.replace(/"/g, '&quot;')}">
+                        <div style="font-weight:600; margin-bottom:2px;">${escapeHtml(log.message)}</div>
+                        <div style="font-size:0.75rem; color:var(--text-secondary)">Scan time: ${log.scan_time.toFixed(3)}s</div>
                     </td>
-                    <td style="font-size:0.85rem">
-                         <div style="font-weight:bold; color:var(--accent-color)">${log.host}</div>
-                         <div style="color:var(--text-secondary)">F: ${escapeHtml(log.sender)}</div>
-                         <div style="color:var(--text-secondary)">T: ${escapeHtml(log.recipient)}</div>
+                    <td>
+                        <div style="display:flex; align-items:center; margin-bottom:2px;">${escapeHtml(log.host)}</div>
+                        <div style="font-size:0.75rem; color:var(--text-secondary)">
+                            F: ${escapeHtml(log.sender)}<br>
+                            T: ${escapeHtml(log.recipient)}
+                        </div>
                     </td>
                 `;
             } else {

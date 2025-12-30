@@ -391,6 +391,7 @@ function parseRspamdEntry($entry)
 
     return [
         'timestamp' => $timestamp,
+        'unix_time' => $entry['unix_time'], // Pass raw timestamp for frontend TZ
         'host' => $entry['ip'] ?? 'unknown',
         'component' => 'rspamd',
         'message' => $entry['subject'] ?? '(No Subject)',
