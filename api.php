@@ -166,9 +166,10 @@ function handleChangePassword()
 function handleLogin()
 {
     $input = json_decode(file_get_contents('php://input'), true);
-    $username = $input['username'] ?? '';
+    $username = trim($input['username'] ?? '');
     $password = $input['password'] ?? '';
-    $code = $input['code'] ?? '';
+    // Code should also be trimmed (6 digits)
+    $code = trim($input['code'] ?? '');
 
     // If setup is required, prevent login
     if (!hasUsers()) {
@@ -186,7 +187,7 @@ function handleLogin()
 function handleSetupAdmin()
 {
     $input = json_decode(file_get_contents('php://input'), true);
-    $username = $input['username'] ?? '';
+    $username = trim($input['username'] ?? '');
     $password = $input['password'] ?? '';
 
     if (!$username || !$password) {
@@ -200,7 +201,7 @@ function handleSetupAdmin()
 function handleAddUser()
 {
     $input = json_decode(file_get_contents('php://input'), true);
-    $username = $input['username'] ?? '';
+    $username = trim($input['username'] ?? '');
     $password = $input['password'] ?? '';
 
     if (!$username || !$password) {
@@ -214,7 +215,7 @@ function handleAddUser()
 function handleDeleteUser()
 {
     $input = json_decode(file_get_contents('php://input'), true);
-    $username = $input['username'] ?? '';
+    $username = $input['username'] ?? ''; // Do not trim, so we can delete bad keys like "user "
 
     if (!$username) {
         echo json_encode(['success' => false, 'error' => 'Missing fields']);

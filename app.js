@@ -225,7 +225,7 @@ document.addEventListener('DOMContentLoaded', () => {
             msg.textContent = '';
             newUserQrContainer.style.display = 'none'; // Hide previous
 
-            const u = document.getElementById('new-username').value;
+            const u = document.getElementById('new-username').value.trim();
             const p = document.getElementById('new-user-pass').value;
 
             try {
@@ -289,7 +289,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (setupForm) {
         setupForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const u = document.getElementById('setup-username').value;
+            const u = document.getElementById('setup-username').value.trim();
             const p = document.getElementById('setup-password').value;
             const err = document.getElementById('setup-error');
             const qrContainer = document.getElementById('setup-qr-container');
@@ -329,9 +329,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const username = document.getElementById('username').value;
+        const username = document.getElementById('username').value.trim();
         const password = document.getElementById('password').value;
-        const code = document.getElementById('mfa-code').value;
+        const code = document.getElementById('mfa-code').value.trim();
 
         loginError.style.display = 'none';
 
