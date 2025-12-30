@@ -1,99 +1,92 @@
 # 🦅 Mail Log Reader Pro
 
-> **Una interfaz moderna, elegante y en tiempo real para analizar logs de correo (Postfix/Syslog & Rspamd).**
+> **A modern, secure, and real-time interface for analyzing mail logs (Postfix/Syslog & Rspamd).**
 
-Mail Log Reader Pro transforma archivos de logs crudos y difíciles de leer en un dashboard interactivo, visual y potente. Diseñado para administradores de sistemas que necesitan monitorear el flujo de correos con estilo y eficiencia.
-
----
-
-## ✨ Características Principales
-
-*   **🎨 Diseño Premium "Liquid Glass"**: Interfaz oscura moderna con efectos de desenfoque y transparencias.
-*   **📂 Multi-Motor de Logs**:
-    *   **Syslog Universal**: Compatible con logs estándar de Postfix/Sendmail.
-    *   **⚡ Rspamd Integration**: Soporte nativo para `rspamd_history_json`. Visualiza **Scores**, **Acciones** y **Símbolos** con indicadores de toxicidad codificados por color.
-*   **⏱️ Monitoreo en Tiempo Real**: Actualización automática de logs sin recargar la página (Polling silencioso).
-*   **🔍 Búsqueda Inteligente**:
-    *   Filtrado instantáneo por Remitente, Destinatario o Contenido.
-    *   **Traza de Mensajes**: Al buscar por `Queue ID`, visualiza gráficamente el flujo `FROM -> TO`.
-*   **🌍 Geolocalización de IPs**: Detecta automáticamente el país y muestra la bandera correspondiente para las IPs en los logs.
-*   **⚙️ Configuración Dinámica**: Cambia fácilmente entre tipos de log y rutas de archivo desde la interfaz gráfica, sin editar código.
-*   **🛡️ Gestión Integral de Usuarios**:
-    *   **Modo Setup Automático**: Creación guiada del primer administrador si no existen usuarios.
-    *   **Panel de Administración**: Añade y elimina usuarios directamente desde la interfaz.
-    *   Almacenamiento seguro en JSON (sin base de datos SQL).
+Mail Log Reader Pro transforms raw, hard-to-read log files into a powerful, interactive visual dashboard. Designed for system administrators who need to monitor mail flow with style, security, and efficiency.
 
 ---
 
-## 🚀 Instalación y Configuración
+## ✨ Key Features
 
-Sigue estos pasos para desplegar el proyecto en tu servidor:
+*   **🎨 Premium "Liquid Glass" Design**: Modern dark interface with blur effects and transparencies.
+*   **🔒 Enterprise Security**:
+    *   **MFA (2FA)**: Secure login with Time-based One-Time Password (TOTP) compatible with Google Authenticator/Authy.
+    *   **Secure Storage**: Bcrypt password hashing to protect user credentials.
+*   **📅 Smart Date Filtering**:
+    *   **Interactive Calendar**: Easily filter logs by specific dates. automatically highlighting days with available data.
+*   **🌍 IP Geolocation**:
+    *   **Automatic Detection**: Displays country flags and names next to IP addresses.
+    *   **Smart Caching**: Minimized API usage for lightning-fast performance.
+*   **📂 Multi-Log Engine**:
+    *   **Universal Syslog**: Compatible with standard Postfix/Sendmail logs.
+    *   **⚡ Rspamd Integration**: Native support for `rspamd_history_json`. Visualizes **Scores**, **Actions**, and **Symbols** with color-coded toxicity indicators.
+*   **⏱️ Real-Time Monitoring**: Automatic log updates without page reloads (Silent Polling).
+*   **⚙️ Dynamic Configuration**: Switch log types and paths directly from the UI.
+*   **🛡️ User Management**:
+    *   **Auto Setup Mode**: Guided creation of the first admin account.
+    *   **Admin Panel**: Add and remove users directly from the interface.
 
-1.  **Clonar el Repositorio**
+---
+
+## 🚀 Installation & Setup
+
+1.  **Clone the Repository**
     ```bash
-    git clone https://tu-repo/maillogreader.git
+    git clone https://your-repo/maillogreader.git
     cd maillogreader
     ```
 
-2.  **Configurar Archivos Base**
-    El proyecto incluye archivos de ejemplo. Debes crear tus archivos de configuración locales:
-
+2.  **Configure Base Files**
     ```bash
-    # Copiar configuración de ejemplo
     cp config.sample.php config.php
     ```
+    *Note: `users.json` is automatically created during the "Initial Setup" screen in the browser.*
 
-    *Nota 1: `users.json` es opcional al inicio. Si no existe, la aplicación entrará en **Modo Setup** y te pedirá crear el primer usuario al abrirla en el navegador.*
-    
-    *Nota 2: `settings.json` se creará automáticamente cuando guardes la configuración desde la UI.*
-
-3.  **Permisos (¡Importante!)**
-    El servidor web (www-data/apache/nginx) necesita permisos para:
-    *   **Leer** los archivos de logs que configures.
-    *   **Escribir** en el directorio (para crear/actualizar `users.json` y `settings.json`).
+3.  **Permissions (Critical!)**
+    The web server (www-data/apache/nginx) needs permissions to:
+    *   **Read** the log files.
+    *   **Write** to the directory (to manage `users.json` and `settings.json`).
 
     ```bash
-    # Ejemplo de permisos (ajustar según tu entorno)
     chown www-data:www-data .
     chmod 770 .
     ```
 
 ---
 
-## 📖 Cómo Funciona
+## 📖 How It Works
 
-### 1. Dashboard Principal
-Al acceder, verás los logs más recientes.
-*   **Modo Syslog**: Muestra Timestamp, Status (Sent/Deferred/Error), Componente y Mensaje.
-*   **Modo Rspamd**: Muestra Score, Action (Reject/No Action), Subject y Símbolos de Spam.
+### 1. Dashboard
+*   **Syslog Mode**: Displays Timestamp, Status (Sent/Deferred/Error), Component, and Message.
+*   **Rspamd Mode**: Displays Score, Action (Reject/No Action), Subject, and Spam Symbols.
 
-### 2. Panel de Configuración
-Desde el menú de usuario (arriba a la derecha), accede a **Configuración**:
-*   Selecciona el tipo de log (`Standard Mail Log` o `Rspamd History`).
-*   Define la ruta absoluta al archivo (ej: `/var/log/rspamd/history.json`).
+### 2. Configuration
+Access **Settings** from the user menu:
+*   Select Log Type (`Standard Mail Log` or `Rspamd History`).
+*   Set absolute path (e.g., `/var/log/rspamd/history.json`).
 
-### 3. Gestión de Usuarios
-Desde el menú de usuario, accede a **Usuarios**:
-*   Visualiza todos los usuarios con acceso.
-*   Añade nuevos administradores o elimina los existentes.
+### 3. Security & MFA
+*   On first launch, you will be prompted to create an Admin account.
+*   Scan the **QR Code** with your Authenticator App to enable MFA.
+*   Subsequent logins require username, password, and the 6-digit code.
 
-### 4. Detalles Avanzados
-Haz clic en cualquier fila para desplegar:
-*   **IPs Enriquecidas**: Banderas de países automáticas.
-*   **Traza de ID**: Flujo visual de mensajes.
-*   **Explorador de Símbolos (Rspamd)**: Píldoras de colores (Rojo=Spam, Verde=Ham) con descripciones al pasar el mouse.
+### 4. Advanced Details
+Click any row to reveal:
+*   **Geo Flags**: Visual country indicators for IPs.
+*   **Message Trace**: Visual flow of the message ID.
+*   **Symbol Explorer (Rspamd)**: Detailed descriptions of spam scores.
 
 ---
 
-## 🛠️ Requisitos Técnicos
+## 🛠️ Requirements
 
-*   **PHP**: 7.4 o superior.
-*   **Servidor Web**: Apache, Nginx o IIS.
-*   **Navegador**: Cualquiera moderno (Chrome, Edge, Firefox).
-*   **Dependencias**: Ninguna (Uses Vanilla JS/CSS).
+*   **PHP**: 7.4+
+*   **Web Server**: Apache/Nginx/IIS
+*   **Browser**: Modern (Chrome, Edge, Firefox)
+*   **No Database**: Zero-dependency (Flatfile JSON storage).
 
 ---
 
 <p align="center">
-  <sub>Desarrollado por NodoVIP</sub>
+  <sub>Developed by NodoVIP</sub>
 </p>

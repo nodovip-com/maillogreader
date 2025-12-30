@@ -53,9 +53,61 @@ switch ($action) {
         requireLogin();
         handleChangePassword();
         break;
-    default:
-        echo json_encode(['error' => 'Invalid action']);
+    case 'get_available_dates':
+        handleGetAvailableDates();
         break;
+    default:
+        echo json_encode(['success' => false, 'error' => 'Invalid action']);
+        break;
+}
+
+function handleGetAvailableDates()
+{
+    $settings = getSettings();
+    $path = $settings['log_path'];
+
+    if (!file_exists($path)) {
+        echo json_encode(['dates' => []]);
+        return;
+    }
+
+    $dates = [];
+    $type = $settings['log_type'];
+
+    if ($type === 'rspamd') {
+        $json = file_get_contents($path);
+        $data = json_decode($json, true);
+        if (is_array($data)) {
+            foreach ($data as $entry) {
+                if (isset($entry['unix_time'])) {
+                    $d = date('Y-m-d', $entry['unix_time']);
+                    $dates[$d] = true;
+                }
+            }
+        }
+    } else {
+        // Syslog
+        $handle = fopen($path, "r");
+        if ($handle) {
+            // Read lines. If file is huge this is slow, but we need to scan all for calendar.
+            // Optimization: Read chunks or just assume regex works.
+            while (($line = fgets($handle)) !== false) {
+                if (preg_match('/^([A-M][a-z]{2}\s+\d+)/', $line, $m)) {
+                    // "Dec 29" -> Current Year assumed
+                    // Use checkdate to be safe? Or just strtotime.
+                    // Syslog doesn't have year. We assume logs are recent (this year).
+                    $timestamp = strtotime($m[1]);
+                    if ($timestamp) {
+                        $d = date('Y-m-d', $timestamp);
+                        $dates[$d] = true;
+                    }
+                }
+            }
+            fclose($handle);
+        }
+    }
+
+    echo json_encode(['dates' => array_keys($dates)]);
 }
 
 function getSettings()
@@ -116,17 +168,18 @@ function handleLogin()
     $input = json_decode(file_get_contents('php://input'), true);
     $username = $input['username'] ?? '';
     $password = $input['password'] ?? '';
+    $code = $input['code'] ?? '';
 
     // If setup is required, prevent login
     if (!hasUsers()) {
-        echo json_encode(['success' => false, 'error' => 'Setup required']);
+        echo json_encode(['success' => false, 'error' => 'Setup required', 'setup_required' => true]);
         return;
     }
 
-    if (login($username, $password)) {
+    if (login($username, $password, $code)) {
         echo json_encode(['success' => true, 'user' => $username]);
     } else {
-        echo json_encode(['success' => false, 'error' => 'Invalid credentials']);
+        echo json_encode(['success' => false, 'error' => 'Invalid credentials or MFA code']);
     }
 }
 
@@ -168,9 +221,6 @@ function handleDeleteUser()
         return;
     }
 
-    // Prevent self-deletion if basic sanity check needed, but auth.php handles last user check.
-    // UI should block self-deletion maybe? 
-    // Backend:
     if ($username === $_SESSION['user']) {
         echo json_encode(['success' => false, 'error' => 'Cannot delete yourself']);
         return;
@@ -221,11 +271,19 @@ function processRspamdLogs($path)
     $search = isset($_GET['search']) ? strtolower($_GET['search']) : '';
     // Status filter in Rspamd = Action? (reject, no action, etc.)
     $filterStatus = isset($_GET['status']) ? $_GET['status'] : '';
+    $filterDate = isset($_GET['date']) ? $_GET['date'] : '';
 
     $count = 0;
     $totalProcessed = 0;
 
     foreach ($data as $entry) {
+        // Date Filter (Optimized check before parsing completely if possible, but parsing needed for time)
+        if ($filterDate && isset($entry['unix_time'])) {
+            $entryDate = date('Y-m-d', $entry['unix_time']);
+            if ($entryDate !== $filterDate)
+                continue;
+        }
+
         $parsed = parseRspamdEntry($entry);
 
         // Search
@@ -237,20 +295,33 @@ function processRspamdLogs($path)
 
         // Status Filter
         if ($filterStatus) {
-            // Mapping UI status to Rspamd actions
-            // UI: sent, error, deferred, info
-            // Rspamd: 'no action' (~sent/info), 'reject' (error), 'soft reject' (deferred), 'add header' (info/rewrite)
+            // Parsed['status'] is already normalized in parseRspamdEntry:
+            // 'success' (no action), 'error' (reject), 'deferred' (soft reject), 'info' (others)
 
-            // Normalize for filter checking
-            $entryAction = strtolower($parsed['status']); // using mapped status
-            // Simple mapping check
-            if ($filterStatus === 'error' && $entryAction !== 'reject')
-                continue;
-            if ($filterStatus === 'sent' && $entryAction !== 'no action')
-                continue;
-            // For now, loose filtering or just exact match if user types explicit action
-            if ($filterStatus !== 'info' && strpos($entryAction, $filterStatus) === false && $filterStatus !== 'unknown') {
-                // Maybe skip strict filtering for Rspamd initial implementation to avoid confusion
+            $entryStatus = $parsed['status'];
+
+            // Direct comparison for common filters
+            if ($filterStatus === 'sent' && $entryStatus === 'success') {
+                // Keep
+            } elseif ($filterStatus === 'error' && $entryStatus === 'error') {
+                // Keep
+            } elseif ($filterStatus === 'deferred' && $entryStatus === 'deferred') {
+                // Keep
+            } elseif ($filterStatus === 'info' || $filterStatus === '' || $filterStatus === 'unknown') {
+                // info shows everything or specifics? 
+                // IF user purposely chose "warning" or "bounced" (which dont map well to Rspamd), we might filter them out or show none.
+                // Let's allow loose matching if it's not one of the strict ones above.
+                if ($filterStatus === 'info') {
+                    // Show all is usually empty string filter, but if specific 'info' selected, technically all are info?
+                    // Or just keep logic simple:
+                }
+            } else {
+                // If filter is specific (e.g. 'bounced') but entry is 'success', skip.
+                // We don't have 'bounced' in Rspamd usually.
+                // If filter doesn't match entry's status, skip.
+                if ($filterStatus !== $entryStatus) {
+                    continue;
+                }
             }
         }
 
@@ -320,6 +391,7 @@ function processSyslogLogs($path)
     $offset = isset($_GET['offset']) ? intval($_GET['offset']) : 0;
     $search = isset($_GET['search']) ? strtolower($_GET['search']) : '';
     $filterStatus = isset($_GET['status']) ? $_GET['status'] : '';
+    $filterDate = isset($_GET['date']) ? $_GET['date'] : '';
 
     $count = 0;
     $totalProcessed = 0;
@@ -328,6 +400,17 @@ function processSyslogLogs($path)
         $parsed = parseLogLine($line);
         if (!$parsed)
             continue;
+
+        if ($filterDate) {
+            // parsed['timestamp'] is "Dec 29 12:00:00"
+            // assumes current year.
+            $ts = strtotime($parsed['timestamp']);
+            if ($ts) {
+                $entryDate = date('Y-m-d', $ts);
+                if ($entryDate !== $filterDate)
+                    continue;
+            }
+        }
 
         if ($search) {
             $jsonParsed = json_encode($parsed);

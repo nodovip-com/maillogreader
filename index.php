@@ -13,6 +13,9 @@ session_start();
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap"
         rel="stylesheet">
+    <!-- Flatpickr -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
 </head>
 
 <body>
@@ -20,21 +23,27 @@ session_start();
     <!-- Setup Screen (Initial Admin Creation) -->
     <div id="setup-screen" class="hidden">
         <div class="login-card">
-            <h1>Configuración <span style="color:white">Inicial</span></h1>
+            <h1>Initial <span style="color:white">Setup</span></h1>
             <p style="color:var(--text-secondary); margin-bottom:1.5rem; font-size:0.9rem;">
-                Bienvenido. No se han detectado usuarios en el sistema. Por favor, crea una cuenta de administrador para
-                comenzar.
+                Welcome. No users detected. Please create an administrator account.
             </p>
             <form id="setup-form">
                 <div class="input-group">
-                    <label>Nuevo Usuario (Admin)</label>
+                    <label>Username (Admin)</label>
                     <input type="text" id="setup-username" required placeholder="admin">
                 </div>
                 <div class="input-group">
-                    <label>Contraseña</label>
+                    <label>Password</label>
                     <input type="password" id="setup-password" required placeholder="••••••">
                 </div>
-                <button type="submit" class="btn">Crear Administrador</button>
+                <button type="submit" class="btn">Create Administrator</button>
+                <div id="setup-qr-container" style="display:none; text-align:center; margin-top:1rem;">
+                    <p style="font-size:0.8rem; color:white; margin-bottom:0.5rem;">Scan this QR with Authenticator App:
+                    </p>
+                    <img id="setup-qr-img" style="border: 4px solid white; border-radius: 4px; max-width: 150px;">
+                    <p style="font-size:0.8rem; color:var(--text-secondary); margin-top:0.5rem;">Then reload to login.
+                    </p>
+                </div>
                 <p id="setup-error"
                     style="color: var(--error-color); margin-top: 1rem; font-size: 0.9rem; display: none;"></p>
             </form>
@@ -47,14 +56,19 @@ session_start();
             <h1>Log Reader <span style="color:white">Pro</span></h1>
             <form id="login-form">
                 <div class="input-group">
-                    <label>Usuario</label>
+                    <label>Username</label>
                     <input type="text" id="username" required placeholder="admin">
                 </div>
                 <div class="input-group">
-                    <label>Contraseña</label>
+                    <label>Password</label>
                     <input type="password" id="password" required placeholder="••••••">
                 </div>
-                <button type="submit" class="btn">Acceder al Sistema</button>
+                <div class="input-group">
+                    <label>MFA Code</label>
+                    <input type="text" id="mfa-code" required placeholder="123456" pattern="\d{6}" maxlength="6"
+                        style="letter-spacing: 2px;">
+                </div>
+                <button type="submit" class="btn">Sign In</button>
                 <p id="login-error"
                     style="color: var(--error-color); margin-top: 1rem; font-size: 0.9rem; display: none;"></p>
             </form>
@@ -78,21 +92,29 @@ session_start();
                     </div>
                     <!-- Dropdown -->
                     <div class="user-dropdown" id="user-dropdown">
-                        <button class="dropdown-item" id="users-btn">Usuarios</button> <!-- NEW -->
-                        <button class="dropdown-item" id="settings-btn">Configuración</button>
-                        <button class="dropdown-item" id="change-password-btn">Cambiar Contraseña</button>
+                        <button class="dropdown-item" id="users-btn">Users</button>
+                        <button class="dropdown-item" id="settings-btn">Settings</button>
+                        <button class="dropdown-item" id="change-password-btn">Change Password</button>
                         <div class="dropdown-divider"></div>
-                        <button class="dropdown-item" id="logout-btn">Cerrar Sesión</button>
+                        <button class="dropdown-item" id="logout-btn">Logout</button>
                     </div>
                 </div>
             </div>
         </nav>
 
         <div class="toolbar">
-            <input type="text" id="search-input" class="search-input" placeholder="Buscar por correo, ID, mensaje...">
+            <input type="text" id="search-input" class="search-input" placeholder="Search by email, ID, message...">
+
+            <!-- Calendar Filter -->
+            <div class="flatpickr-wrapper" style="position:relative;">
+                <input type="text" id="date-filter" class="filter-select" placeholder="Select Date"
+                    style="width: 140px; cursor:pointer;" readonly>
+                <button type="button" id="clear-date"
+                    style="position:absolute; right:10px; top:50%; transform:translateY(-50%); background:none; border:none; color:var(--text-secondary); cursor:pointer; font-size:1.2rem; display:none;">&times;</button>
+            </div>
 
             <select id="status-filter" class="filter-select">
-                <option value="">Relevantes (Default)</option>
+                <option value="">Relevant (Default)</option>
                 <option value="sent">Sent</option>
                 <option value="deferred">Deferred</option>
                 <option value="bounced">Bounced</option>
@@ -106,12 +128,14 @@ session_start();
 
             <select id="auto-refresh" class="filter-select">
                 <option value="0">Off (Manual)</option>
-                <option value="2000">2s</option>
-                <option value="5000" selected>5s</option>
-                <option value="10000">10s</option>
+                <option value="60000" selected>1 min</option>
+                <option value="120000">2 min</option>
+                <option value="300000">5 min</option>
+                <option value="600000">10 min</option>
+                <option value="900000">15 min</option>
             </select>
 
-            <button id="refresh-btn" class="btn" style="width: auto; padding: 0.5rem 1.5rem;">Actualizar</button>
+            <button id="refresh-btn" class="btn" style="width: auto; padding: 0.5rem 1.5rem;">Refresh</button>
         </div>
 
         <div class="logs-container">
@@ -139,24 +163,24 @@ session_start();
     <div id="password-modal-overlay" class="modal-overlay">
         <div class="modal">
             <div class="modal-header">
-                <h2>Cambiar Contraseña</h2>
+                <h2>Change Password</h2>
                 <button id="modal-close" class="modal-close">&times;</button>
             </div>
             <div class="modal-body">
                 <form id="change-password-form">
                     <div class="input-group">
-                        <label>Contraseña Actual</label>
+                        <label>Current Password</label>
                         <input type="password" id="old-password" required>
                     </div>
                     <div class="input-group">
-                        <label>Nueva Contraseña</label>
+                        <label>New Password</label>
                         <input type="password" id="new-password" required>
                     </div>
                     <p id="password-msg" style="margin-bottom:1rem; font-size:0.9rem;"></p>
                     <div style="display:flex; justify-content:flex-end; gap:1rem;">
                         <button type="button" id="modal-cancel" class="btn"
-                            style="background:transparent; border:1px solid var(--border-color);">Cancelar</button>
-                        <button type="submit" class="btn">Guardar</button>
+                            style="background:transparent; border:1px solid var(--border-color);">Cancel</button>
+                        <button type="submit" class="btn">Save</button>
                     </div>
                 </form>
             </div>
@@ -167,13 +191,13 @@ session_start();
     <div id="settings-modal-overlay" class="modal-overlay">
         <div class="modal">
             <div class="modal-header">
-                <h2>Configuración</h2>
+                <h2>Settings</h2>
                 <button id="settings-close" class="modal-close">&times;</button>
             </div>
             <div class="modal-body">
                 <form id="settings-form">
                     <div class="input-group">
-                        <label>Tipo de Log</label>
+                        <label>Log Type</label>
                         <select id="setting-log-type"
                             style="width:100%; padding:0.8rem; background:var(--input-bg); border:1px solid var(--border-color); color:var(--text-primary); border-radius:6px;">
                             <option value="syslog">Standard Mail Log (Syslog)</option>
@@ -181,15 +205,15 @@ session_start();
                         </select>
                     </div>
                     <div class="input-group">
-                        <label>Ruta del Archivo</label>
+                        <label>Log File Path</label>
                         <input type="text" id="setting-log-path" required placeholder="/var/log/mail.log">
-                        <small style="color:var(--text-secondary)">Ruta absoluta o relativa al sistema.</small>
+                        <small style="color:var(--text-secondary)">Absolute or relative path.</small>
                     </div>
                     <p id="settings-msg" style="margin-bottom:1rem; font-size:0.9rem;"></p>
                     <div style="display:flex; justify-content:flex-end; gap:1rem;">
                         <button type="button" id="settings-cancel" class="btn"
-                            style="background:transparent; border:1px solid var(--border-color);">Cancelar</button>
-                        <button type="submit" class="btn">Guardar</button>
+                            style="background:transparent; border:1px solid var(--border-color);">Cancel</button>
+                        <button type="submit" class="btn">Save</button>
                     </div>
                 </form>
             </div>
@@ -200,22 +224,29 @@ session_start();
     <div id="users-modal-overlay" class="modal-overlay">
         <div class="modal" style="max-width: 500px;">
             <div class="modal-header">
-                <h2>Gestión de Usuarios</h2>
+                <h2>User Management</h2>
                 <button id="users-close" class="modal-close">&times;</button>
             </div>
             <div class="modal-body">
                 <div style="margin-bottom: 2rem;">
-                    <h3 style="font-size:0.9rem; color:var(--text-secondary); margin-bottom:0.5rem;">Añadir Usuario</h3>
-                    <form id="add-user-form" style="display:flex; gap:0.5rem; align-items:flex-start;">
-                        <input type="text" id="new-username" placeholder="Usuario" required style="flex:1;">
-                        <input type="password" id="new-user-pass" placeholder="Contraseña" required style="flex:1;">
+                    <h3 style="font-size:0.9rem; color:var(--text-secondary); margin-bottom:0.5rem;">Add User</h3>
+                    <form id="add-user-form" style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:flex-start;">
+                        <input type="text" id="new-username" placeholder="Username" required style="flex:1;">
+                        <input type="password" id="new-user-pass" placeholder="Password" required style="flex:1;">
                         <button type="submit" class="btn" style="width:auto;">+</button>
                     </form>
                     <p id="users-msg" style="font-size:0.8rem; margin-top:0.5rem;"></p>
+                    <!-- New User QR Area -->
+                    <div id="new-user-qr-container"
+                        style="display:none; text-align:center; margin-top:1rem; background:rgba(0,0,0,0.2); padding:1rem; border-radius:6px;">
+                        <p style="font-size:0.85rem; color:white; margin-bottom:0.5rem;">Scan MFA Code for <b
+                                id="new-user-name-display"></b>:</p>
+                        <img id="new-user-qr-img"
+                            style="border: 4px solid white; border-radius: 4px; max-width: 120px;">
+                    </div>
                 </div>
 
-                <h3 style="font-size:0.9rem; color:var(--text-secondary); margin-bottom:0.5rem;">Usuarios Existentes
-                </h3>
+                <h3 style="font-size:0.9rem; color:var(--text-secondary); margin-bottom:0.5rem;">Existing Users</h3>
                 <div class="users-list-container"
                     style="background:var(--input-bg); border:1px solid var(--border-color); border-radius:6px; max-height:200px; overflow-y:auto;">
                     <ul id="users-list" style="list-style:none; padding:0; margin:0;">
@@ -226,6 +257,7 @@ session_start();
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script src="app.js"></script>
 </body>
 

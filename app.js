@@ -155,6 +155,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const addUserForm = document.getElementById('add-user-form');
     const usersList = document.getElementById('users-list');
 
+    // MFA Elements for New User
+    const newUserQrContainer = document.getElementById('new-user-qr-container');
+    const newUserQrImg = document.getElementById('new-user-qr-img');
+    const newUserNameDisplay = document.getElementById('new-user-name-display');
+
     if (usersBtn) usersBtn.addEventListener('click', (e) => { e.stopPropagation(); openUsersModal(); });
     if (usersClose) usersClose.addEventListener('click', () => usersModal.classList.remove('show'));
 
@@ -162,6 +167,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!usersModal) return;
         userDropdown.classList.remove('show');
         usersModal.classList.add('show');
+        if (newUserQrContainer) newUserQrContainer.style.display = 'none'; // Reset QR view
         fetchUsers();
     }
 
@@ -198,7 +204,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function deleteUser(username) {
-        if (!confirm(`¿Eliminar usuario ${username}?`)) return;
+        if (!confirm(`Delete user ${username}?`)) return;
         try {
             const res = await fetch('api.php?action=delete_user', {
                 method: 'POST', body: JSON.stringify({ username })
@@ -217,6 +223,7 @@ document.addEventListener('DOMContentLoaded', () => {
             e.preventDefault();
             const msg = document.getElementById('users-msg');
             msg.textContent = '';
+            newUserQrContainer.style.display = 'none'; // Hide previous
 
             const u = document.getElementById('new-username').value;
             const p = document.getElementById('new-user-pass').value;
@@ -231,7 +238,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     document.getElementById('new-user-pass').value = '';
                     fetchUsers();
                     msg.style.color = 'var(--success-color)';
-                    msg.textContent = 'Usuario creado.';
+                    msg.textContent = 'User created successfully.';
+
+                    // Show QR Code
+                    if (data.secret) {
+                        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=otpauth://totp/MailLogReader:${encodeURIComponent(u)}?secret=${data.secret}&issuer=MailLogReader`;
+                        newUserQrImg.src = qrUrl;
+                        newUserNameDisplay.textContent = u;
+                        newUserQrContainer.style.display = 'block';
+                    }
                 } else {
                     msg.style.color = 'var(--error-color)';
                     msg.textContent = data.error;
@@ -277,6 +292,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const u = document.getElementById('setup-username').value;
             const p = document.getElementById('setup-password').value;
             const err = document.getElementById('setup-error');
+            const qrContainer = document.getElementById('setup-qr-container');
+            const qrImg = document.getElementById('setup-qr-img');
+
+            // Hide button to prevent double submit? Or just clear error
+            err.style.display = 'none';
 
             try {
                 const res = await fetch('api.php?action=setup_admin', {
@@ -284,7 +304,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 const data = await res.json();
                 if (data.success) {
-                    location.reload();
+                    // Show QR and wait for user to reload
+                    if (data.secret) {
+                        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=otpauth://totp/MailLogReader:${encodeURIComponent(u)}?secret=${data.secret}&issuer=MailLogReader`;
+                        qrImg.src = qrUrl;
+                        qrContainer.style.display = 'block';
+                        setupForm.querySelector('button').style.display = 'none'; // Hide create button
+                        // User must reload manually or we provide a button "I Scanned It"
+                        const btn = document.createElement('button');
+                        btn.className = 'btn';
+                        btn.textContent = 'I have scanned the QR Code (Proceed to Login)';
+                        btn.style.marginTop = '1rem';
+                        btn.onclick = (ev) => { ev.preventDefault(); location.reload(); };
+                        qrContainer.appendChild(btn);
+                    } else {
+                        location.reload();
+                    }
                 } else {
                     err.style.display = 'block'; err.textContent = data.error;
                 }
@@ -296,6 +331,7 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         const username = document.getElementById('username').value;
         const password = document.getElementById('password').value;
+        const code = document.getElementById('mfa-code').value;
 
         loginError.style.display = 'none';
 
@@ -303,7 +339,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch('api.php?action=login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password })
+                body: JSON.stringify({ username, password, code })
             });
             const data = await res.json();
 
@@ -330,6 +366,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function initApp() {
         // Load initial settings to know log type
         await loadSettingsToState();
+        await initCalendar(); // Init calendar
         fetchLogs(true);
         startAutoRefresh();
     }
@@ -368,6 +405,46 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    const dateFilter = document.getElementById('date-filter');
+    const clearDateBtn = document.getElementById('clear-date');
+
+    // ...
+
+    // --- Calendar Logic ---
+    let calendarInstance = null;
+
+    async function initCalendar() {
+        if (!dateFilter) return;
+
+        // Fetch available dates first
+        let availableDates = [];
+        try {
+            const res = await fetch('api.php?action=get_available_dates');
+            const data = await res.json();
+            availableDates = data.dates || [];
+        } catch (e) { }
+
+        calendarInstance = flatpickr(dateFilter, {
+            dateFormat: "Y-m-d",
+            theme: "dark",
+            enable: availableDates.length > 0 ? availableDates : [],
+            onChange: (selectedDates, dateStr, instance) => {
+                if (dateStr) {
+                    clearDateBtn.style.display = 'block';
+                    currentOffset = 0;
+                    fetchLogs(true);
+                }
+            }
+        });
+
+        clearDateBtn.addEventListener('click', () => {
+            calendarInstance.clear();
+            clearDateBtn.style.display = 'none';
+            currentOffset = 0;
+            fetchLogs(true);
+        });
+    }
+
     async function fetchLogs(reset = false, isBackground = false) {
         if (isFetching) return;
         isFetching = true;
@@ -377,14 +454,16 @@ document.addEventListener('DOMContentLoaded', () => {
             currentOffset = 0;
             allLogsLoaded = false;
             loader.classList.remove('hidden');
-            // If settings changed, update header potentially
             await loadSettingsToState();
         }
+
+        const dateVal = dateFilter && dateFilter.value ? dateFilter.value : '';
 
         const params = new URLSearchParams({
             action: 'get_logs',
             search: searchInput.value,
             status: statusFilter.value,
+            date: dateVal,
             limit: currentLimit,
             offset: currentOffset
         });
@@ -394,7 +473,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (res.status === 403) { location.reload(); return; }
             const data = await res.json();
 
-            // Check if log type changed on backend unexpectedly
             if (data.type && data.type !== currentLogType) {
                 currentLogType = data.type;
                 updateTableHeader();
@@ -403,9 +481,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const newLogs = data.logs || [];
             if (newLogs.length < currentLimit) allLogsLoaded = true;
 
-            if (reset && isBackground) logsBody.innerHTML = ''; // Silent refresh swap
+            if (reset && isBackground) logsBody.innerHTML = '';
 
             renderLogs(newLogs, reset);
+
+            // Trigger Geo Enhancement
+            enhanceLogsWithGeo(newLogs);
+
             currentOffset += newLogs.length;
 
         } catch (e) { console.error(e); } finally {
@@ -413,6 +495,86 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!isBackground) loader.classList.add('hidden');
         }
     }
+
+    // --- Geolocation Logic ---
+    async function enhanceLogsWithGeo(logs) {
+        const ipsToFetch = new Set();
+        const addIfValid = (ip) => {
+            if (!ip) return;
+            if (ip === '127.0.0.1' || ip === '::1' || ip.startsWith('192.168.') || ip.startsWith('10.')) return;
+            if (!ipCache[ip]) ipsToFetch.add(ip);
+        };
+
+        logs.forEach(log => {
+            if (log.host && !log.host.includes('unknown')) addIfValid(log.host);
+            const ipRegex = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
+            if (log.message) {
+                const matches = log.message.match(ipRegex);
+                if (matches) matches.forEach(ip => addIfValid(ip));
+            }
+        });
+
+        if (ipsToFetch.size === 0) {
+            updateGeoUI();
+            return;
+        }
+
+        const ipArray = Array.from(ipsToFetch);
+        const chunkSize = 100;
+
+        for (let i = 0; i < ipArray.length; i += chunkSize) {
+            const chunk = ipArray.slice(i, i + chunkSize);
+            try {
+                const res = await fetch('http://ip-api.com/batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(chunk.map(ip => ({ query: ip, fields: "query,country,countryCode" })))
+                });
+                const data = await res.json();
+                if (Array.isArray(data)) {
+                    data.forEach(item => {
+                        if (item.query) {
+                            ipCache[item.query] = {
+                                country: item.country || 'Unknown',
+                                code: item.countryCode || ''
+                            };
+                        }
+                    });
+                }
+            } catch (e) { console.error('Geo Fetch Error', e); }
+        }
+        updateGeoUI();
+    }
+
+    function updateGeoUI() {
+        if (currentLogType === 'rspamd') {
+            const hostDivs = document.querySelectorAll('.log-row td:nth-child(5) div:first-child');
+            hostDivs.forEach(div => {
+                const ip = div.textContent.trim();
+                const info = ipCache[ip];
+                if (info && info.code && !div.querySelector('.flag-icon')) {
+                    div.innerHTML = `<img src="https://flagcdn.com/w40/${info.code.toLowerCase()}.png" class="flag-icon" style="margin-right:6px; vertical-align:middle; width:21px;"> ${ip}`;
+                    div.title = info.country;
+                }
+            });
+        }
+        const ipSpans = document.querySelectorAll('.highlight-ip');
+        ipSpans.forEach(span => {
+            const ip = span.getAttribute('data-ip');
+            const info = ipCache[ip];
+            if (info && info.code && !span.querySelector('.flag-icon')) {
+                const img = document.createElement('img');
+                img.src = `https://flagcdn.com/w40/${info.code.toLowerCase()}.png`;
+                img.className = 'flag-icon';
+                img.style.marginRight = '6px';
+                img.style.verticalAlign = 'middle';
+                img.style.width = '21px';
+                img.title = info.country;
+                span.insertBefore(img, span.firstChild);
+            }
+        });
+    }
+
 
     function renderLogs(logs, isReset) {
         if (logs.length === 0 && isReset) {
