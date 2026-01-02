@@ -1,6 +1,7 @@
 <?php
 error_reporting(E_ALL);
 ini_set('display_errors', 0); // Hide raw errors from output
+ini_set('memory_limit', '512M'); // Increase memory limit for large JSON logs
 
 require_once 'auth.php';
 
@@ -315,7 +316,16 @@ function processRspamdLogs($path)
     // Rspamd logs are usually a large JSON array.
     // Reading entire file into memory might be heavy if huge, but for now we assume it fits like the text log.
     $json = file_get_contents($path);
+    if ($json === false) {
+        echo json_encode(['error' => 'Could not read log file: ' . $path]);
+        return;
+    }
+
     $data = json_decode($json, true);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        echo json_encode(['error' => 'JSON Parse Error: ' . json_last_error_msg() . '. File size: ' . filesize($path) . ' bytes.']);
+        return;
+    }
 
     if (!is_array($data)) {
         echo json_encode(['error' => 'Invalid JSON in log file']);
