@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('Mail Log Reader Pro - UI Version 1.0.2 Loaded');
     // Elements
     const loginScreen = document.getElementById('login-screen');
     const dashboard = document.getElementById('dashboard');
@@ -26,6 +27,39 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // IP Cache
     const ipCache = {};
+
+    // --- Helpers ---
+    async function safeFetch(url, options = {}) {
+        try {
+            const res = await fetch(url, options);
+            if (res.status === 403) { location.reload(); return null; }
+
+            const text = await res.text();
+            try {
+                const data = JSON.parse(text);
+                if (data.error) {
+                    showError(data.error);
+                    return null;
+                }
+                return data;
+            } catch (err) {
+                console.error('Invalid JSON from ' + url, text);
+                showError(`<strong>Server Error:</strong> The system returned an invalid response from <code>${url}</code>.<br><pre style="max-height:150px; overflow:auto; margin-top:0.5rem; font-size:0.75rem; background:rgba(0,0,0,0.3); padding:0.5rem; border-radius:4px;">${escapeHtml(text)}</pre>`);
+                return null;
+            }
+        } catch (e) {
+            console.error('Fetch error:', e);
+            showError('Network error or server unreachable.');
+            return null;
+        }
+    }
+
+    function showError(msg) {
+        if (backendError) {
+            backendError.innerHTML = msg;
+            backendError.classList.remove('hidden');
+        }
+    }
 
     // --- UI Controls ---
     const userMenuTrigger = document.getElementById('user-menu-trigger');
@@ -115,12 +149,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (settingsCancel) settingsCancel.addEventListener('click', closeSettingsModal);
 
     async function loadSettings() {
-        try {
-            const res = await fetch('api.php?action=get_settings');
-            const data = await res.json();
+        const data = await safeFetch('api.php?action=get_settings');
+        if (data) {
             document.getElementById('setting-log-type').value = data.log_type || 'syslog';
             document.getElementById('setting-log-path').value = data.log_path || '';
-        } catch (e) { console.error(e); }
+        }
     }
 
     if (settingsForm) {
@@ -177,13 +210,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function fetchUsers() {
-        try {
-            const res = await fetch('api.php?action=get_users');
-            const data = await res.json();
-            if (Array.isArray(data)) {
-                renderUsersList(data);
-            }
-        } catch (e) { }
+        const data = await safeFetch('api.php?action=get_users');
+        if (Array.isArray(data)) {
+            renderUsersList(data);
+        }
     }
 
     function renderUsersList(users) {
@@ -262,31 +292,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Auth & Init ---
 
-    // Check Auth State and Setup requirement immediately
     (async function checkAuth() {
-        try {
-            const res = await fetch('api.php?action=check_auth');
-            const data = await res.json();
+        const data = await safeFetch('api.php?action=check_auth');
+        if (!data) return;
 
-            if (data.setup_required) {
-                // Show Setup Screen
-                if (document.getElementById('setup-screen')) document.getElementById('setup-screen').classList.remove('hidden');
-                if (loginScreen) loginScreen.classList.add('hidden');
-                if (dashboard) dashboard.classList.add('hidden');
-            } else if (data.logged_in) {
-                // Show Dashboard
-                if (document.getElementById('setup-screen')) document.getElementById('setup-screen').classList.add('hidden');
-                if (loginScreen) loginScreen.classList.add('hidden');
-                if (dashboard) dashboard.classList.remove('hidden');
-                if (currentUserSpan) currentUserSpan.textContent = data.user;
-                initApp();
-            } else {
-                // Show Login
-                if (document.getElementById('setup-screen')) document.getElementById('setup-screen').classList.add('hidden');
-                if (loginScreen) loginScreen.classList.remove('hidden');
-                if (dashboard) dashboard.classList.add('hidden');
-            }
-        } catch (e) { console.error('Auth check failed', e); }
+        if (data.setup_required) {
+            // Show Setup Screen
+            if (document.getElementById('setup-screen')) document.getElementById('setup-screen').classList.remove('hidden');
+            if (loginScreen) loginScreen.classList.add('hidden');
+            if (dashboard) dashboard.classList.add('hidden');
+        } else if (data.logged_in) {
+            // Show Dashboard
+            if (document.getElementById('setup-screen')) document.getElementById('setup-screen').classList.add('hidden');
+            if (loginScreen) loginScreen.classList.add('hidden');
+            if (dashboard) dashboard.classList.remove('hidden');
+            if (currentUserSpan) currentUserSpan.textContent = data.user;
+            initApp();
+        } else {
+            // Show Login
+            if (document.getElementById('setup-screen')) document.getElementById('setup-screen').classList.add('hidden');
+            if (loginScreen) loginScreen.classList.remove('hidden');
+            if (dashboard) dashboard.classList.add('hidden');
+        }
     })();
 
     // Setup Form
@@ -377,12 +404,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function loadSettingsToState() {
-        try {
-            const res = await fetch('api.php?action=get_settings');
-            const data = await res.json();
+        const data = await safeFetch('api.php?action=get_settings');
+        if (data) {
             currentLogType = data.log_type || 'syslog';
             updateTableHeader();
-        } catch (e) { }
+        }
     }
 
     function updateTableHeader() {
@@ -561,11 +587,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Fetch available dates first
         let availableDates = [];
-        try {
-            const res = await fetch('api.php?action=get_available_dates');
-            const data = await res.json();
-            availableDates = data.dates || [];
-        } catch (e) { }
+        const data = await safeFetch('api.php?action=get_available_dates');
+        if (data) availableDates = data.dates || [];
 
         calendarInstance = flatpickr(dateFilter, {
             dateFormat: "Y-m-d",
@@ -642,47 +665,28 @@ document.addEventListener('DOMContentLoaded', () => {
             offset: currentOffset
         });
 
-        try {
-            const res = await fetch(`api.php?${params.toString()}`);
-            if (res.status === 403) { location.reload(); return; }
-            const data = await res.json();
-
-            if (data.error) {
-                if (backendError) {
-                    backendError.textContent = data.error;
-                    backendError.classList.remove('hidden');
-                }
-                logsBody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 2rem; color: var(--error-color);">${escapeHtml(data.error)}</td></tr>`;
-                isFetching = false;
-                if (!isBackground) loader.classList.add('hidden');
-                return;
-            }
-
-            if (data.type && data.type !== currentLogType) {
-                currentLogType = data.type;
-                updateTableHeader();
-            }
-
-            // If map view is active, trigger extra geo fetch even if implicit limit?
-            // Actually enhanceLogsWithGeo handles it. 
-            // We just need to make sure we fetch geo for ALL logs in the batch, which we do.
-
-            const newLogs = data.logs || [];
-            if (newLogs.length < currentLimit) allLogsLoaded = true;
-
-            if (reset && isBackground) logsBody.innerHTML = '';
-
-            renderLogs(newLogs, reset);
-
-            // Trigger Geo Enhancement
-            enhanceLogsWithGeo(newLogs);
-
-            currentOffset += newLogs.length;
-
-        } catch (e) { console.error(e); } finally {
+        const data = await safeFetch(`api.php?${params.toString()}`);
+        if (!data) {
             isFetching = false;
             if (!isBackground) loader.classList.add('hidden');
+            return;
         }
+
+        if (data.type && data.type !== currentLogType) {
+            currentLogType = data.type;
+            updateTableHeader();
+        }
+
+        const newLogs = data.logs || [];
+        if (newLogs.length < currentLimit) allLogsLoaded = true;
+
+        if (reset && isBackground) logsBody.innerHTML = '';
+        renderLogs(newLogs, reset);
+        enhanceLogsWithGeo(newLogs);
+        currentOffset += newLogs.length;
+
+        isFetching = false;
+        if (!isBackground) loader.classList.add('hidden');
     }
 
     // --- Geolocation Logic ---

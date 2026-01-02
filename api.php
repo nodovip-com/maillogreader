@@ -1,7 +1,30 @@
 <?php
+error_reporting(E_ALL);
+ini_set('display_errors', 0); // Hide raw errors from output
+
 require_once 'auth.php';
 
 header('Content-Type: application/json');
+
+// Custom error handler to return JSON
+set_error_handler(function ($errno, $errstr, $errfile, $errline) {
+    if (!(error_reporting() & $errno))
+        return false;
+    if (!headers_sent())
+        header('Content-Type: application/json');
+    echo json_encode(['success' => false, 'error' => "PHP Error [$errno]: $errstr in $errfile on line $errline"]);
+    exit;
+});
+
+// Catch fatal errors
+register_shutdown_function(function () {
+    $error = error_get_last();
+    if ($error !== NULL && ($error['type'] === E_ERROR || $error['type'] === E_PARSE || $error['type'] === E_CORE_ERROR || $error['type'] === E_COMPILE_ERROR)) {
+        if (!headers_sent())
+            header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'error' => "PHP Fatal Error: {$error['message']} in {$error['file']} on line {$error['line']}"]);
+    }
+});
 
 define('SETTINGS_FILE', __DIR__ . '/settings.json');
 
