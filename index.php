@@ -150,6 +150,11 @@ session_start();
             </button>
         </div>
 
+        <div id="backend-error" class="hidden"
+            style="margin: 0 2rem 1rem 2rem; padding: 1rem; background: rgba(255, 77, 79, 0.1); border: 1px solid var(--error-color); border-radius: 6px; color: var(--error-color); font-size: 0.9rem;">
+            <!-- Backend error messages go here -->
+        </div>
+
         <div class="logs-container">
             <table class="logs-table">
                 <thead id="logs-header"> <!-- Added ID for dynamic columns -->

@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const loader = document.getElementById('loader');
     const currentUserSpan = document.getElementById('current-user');
     const logsContainer = document.querySelector('.logs-container');
+    const backendError = document.getElementById('backend-error');
 
     // State
     let refreshInterval = null;
@@ -579,6 +580,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
+        if (availableDates.length === 0 && dateFilter) {
+            console.warn('No available dates found for the calendar.');
+        }
+
         clearDateBtn.addEventListener('click', () => {
             calendarInstance.clear();
             clearDateBtn.style.display = 'none';
@@ -622,6 +627,7 @@ document.addEventListener('DOMContentLoaded', () => {
             currentOffset = 0;
             allLogsLoaded = false;
             loader.classList.remove('hidden');
+            if (backendError) backendError.classList.add('hidden'); // Reset error
             await loadSettingsToState();
         }
 
@@ -640,6 +646,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch(`api.php?${params.toString()}`);
             if (res.status === 403) { location.reload(); return; }
             const data = await res.json();
+
+            if (data.error) {
+                if (backendError) {
+                    backendError.textContent = data.error;
+                    backendError.classList.remove('hidden');
+                }
+                logsBody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 2rem; color: var(--error-color);">${escapeHtml(data.error)}</td></tr>`;
+                isFetching = false;
+                if (!isBackground) loader.classList.add('hidden');
+                return;
+            }
 
             if (data.type && data.type !== currentLogType) {
                 currentLogType = data.type;

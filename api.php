@@ -275,6 +275,11 @@ function handleGetLogs()
         exit;
     }
 
+    if (!is_readable($path)) {
+        echo json_encode(['error' => 'Permission denied: Log file is not readable by the web server user. Path: ' . $path]);
+        exit;
+    }
+
     if ($type === 'rspamd') {
         processRspamdLogs($path);
     } else {
