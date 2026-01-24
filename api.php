@@ -21,9 +21,12 @@ set_error_handler(function ($errno, $errstr, $errfile, $errline) {
 register_shutdown_function(function () {
     $error = error_get_last();
     if ($error !== NULL && ($error['type'] === E_ERROR || $error['type'] === E_PARSE || $error['type'] === E_CORE_ERROR || $error['type'] === E_COMPILE_ERROR)) {
-        if (!headers_sent())
+        if (!headers_sent()) {
             header('Content-Type: application/json');
-        echo json_encode(['success' => false, 'error' => "PHP Fatal Error: {$error['message']} in {$error['file']} on line {$error['line']}"]);
+        }
+        $msg = "PHP Fatal Error: {$error['message']} in {$error['file']} on line {$error['line']}";
+        // Ensure even the error response is valid JSON
+        echo json_encode(['success' => false, 'error' => $msg], JSON_PARTIAL_OUTPUT_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
     }
 });
 
@@ -144,16 +147,19 @@ function handleGetAvailableDates()
             }
         }
     } else {
-        // Syslog
+        // Syslog - Optimized: Read from the end of the file
+        // Scanning huge files for dates is slow. We limit scanning to the last ~5MB for dates.
         $handle = fopen($path, "r");
         if ($handle) {
-            // Read lines. If file is huge this is slow, but we need to scan all for calendar.
-            // Optimization: Read chunks or just assume regex works.
+            $fsize = filesize($path);
+            $max_scan = 5 * 1024 * 1024; // 5MB
+            if ($fsize > $max_scan) {
+                fseek($handle, $fsize - $max_scan);
+                fgets($handle); // Skip partial line
+            }
+
             while (($line = fgets($handle)) !== false) {
                 if (preg_match('/^([A-M][a-z]{2}\s+\d+)/', $line, $m)) {
-                    // "Dec 29" -> Current Year assumed
-                    // Use checkdate to be safe? Or just strtotime.
-                    // Syslog doesn't have year. We assume logs are recent (this year).
                     $timestamp = strtotime($m[1]);
                     if ($timestamp) {
                         $d = date('Y-m-d', $timestamp);
@@ -165,7 +171,7 @@ function handleGetAvailableDates()
         }
     }
 
-    echo json_encode(['dates' => array_keys($dates)]);
+    echo json_encode(['dates' => array_keys($dates)], JSON_PARTIAL_OUTPUT_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
 }
 
 function getSettings()
@@ -314,7 +320,15 @@ function handleGetLogs()
 function processRspamdLogs($path)
 {
     // Rspamd logs are usually a large JSON array.
-    // Reading entire file into memory might be heavy if huge, but for now we assume it fits like the text log.
+    $fsize = filesize($path);
+
+    // If file is larger than 10MB, warn about potential memory issues or handle differently
+    // For now we still need to decode the JSON, but we can try to be more careful.
+    if ($fsize > 20 * 1024 * 1024) {
+        // Simple guard: if file is huge, JSON decode might fail. 
+        // We've increased the memory limit to 512M at the top of the file.
+    }
+
     $json = file_get_contents($path);
     if ($json === false) {
         echo json_encode(['error' => 'Could not read log file: ' . $path]);
@@ -323,33 +337,30 @@ function processRspamdLogs($path)
 
     $data = json_decode($json, true);
     if (json_last_error() !== JSON_ERROR_NONE) {
-        echo json_encode(['error' => 'JSON Parse Error: ' . json_last_error_msg() . '. File size: ' . filesize($path) . ' bytes.']);
+        echo json_encode(['error' => 'JSON Parse Error: ' . json_last_error_msg() . '. File size: ' . $fsize . ' bytes.']);
         return;
     }
 
     if (!is_array($data)) {
-        echo json_encode(['error' => 'Invalid JSON in log file']);
+        echo json_encode(['error' => 'Invalid JSON in log file (not an array)']);
         return;
     }
 
-    // Reverse to show newest first? 
-    // Usually standard Rspamd history is newest first? Or oldest? 
-    // JSON arrays have order. Assuming we want newest (top) first.
-    // Let's assume the JSON is chronologically appended (oldest first). So reverse it.
-    $data = array_reverse($data);
-
+    // Process in reverse without array_reverse() to save a bit of peak memory
+    $totalLogs = count($data);
     $parsedLogs = [];
     $limit = isset($_GET['limit']) ? intval($_GET['limit']) : 100;
     $offset = isset($_GET['offset']) ? intval($_GET['offset']) : 0;
     $search = isset($_GET['search']) ? strtolower($_GET['search']) : '';
-    // Status filter in Rspamd = Action? (reject, no action, etc.)
     $filterStatus = isset($_GET['status']) ? $_GET['status'] : '';
     $filterDate = isset($_GET['date']) ? $_GET['date'] : '';
 
     $count = 0;
     $totalProcessed = 0;
 
-    foreach ($data as $entry) {
+    // Start from the end
+    for ($i = $totalLogs - 1; $i >= 0; $i--) {
+        $entry = $data[$i];
         // Date Filter (Optimized check before parsing completely if possible, but parsing needed for time)
         if ($filterDate && isset($entry['unix_time'])) {
             $entryDate = date('Y-m-d', $entry['unix_time']);
@@ -408,7 +419,7 @@ function processRspamdLogs($path)
             break;
     }
 
-    echo json_encode(['logs' => $parsedLogs, 'count' => count($parsedLogs), 'type' => 'rspamd']);
+    echo json_encode(['logs' => $parsedLogs, 'count' => count($parsedLogs), 'type' => 'rspamd'], JSON_PARTIAL_OUTPUT_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
 }
 
 function parseRspamdEntry($entry)
@@ -451,14 +462,12 @@ function parseRspamdEntry($entry)
 
 function processSyslogLogs($path)
 {
-    if (!file_exists($path)) {
-        // Fallback for empty/missing
+    // Optimized syslog reading: Read backwards from end of file
+    $handle = fopen($path, 'r');
+    if (!$handle) {
         echo json_encode(['logs' => [], 'count' => 0]);
         return;
     }
-
-    $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-    $lines = array_reverse($lines);
 
     $parsedLogs = [];
     $limit = isset($_GET['limit']) ? intval($_GET['limit']) : 100;
@@ -470,49 +479,75 @@ function processSyslogLogs($path)
     $count = 0;
     $totalProcessed = 0;
 
-    foreach ($lines as $line) {
-        $parsed = parseLogLine($line);
-        if (!$parsed)
-            continue;
+    fseek($handle, 0, SEEK_END);
+    $pos = ftell($handle);
+    $buffer = "";
+    $chunkSize = 8192;
 
-        if ($filterDate) {
-            // parsed['timestamp'] is "Dec 29 12:00:00"
-            // assumes current year.
-            $ts = strtotime($parsed['timestamp']);
-            if ($ts) {
-                $entryDate = date('Y-m-d', $ts);
-                if ($entryDate !== $filterDate)
+    while ($pos > 0 && $count < $limit) {
+        $readSize = min($pos, $chunkSize);
+        $pos -= $readSize;
+        fseek($handle, $pos);
+        $chunk = fread($handle, $readSize);
+        $buffer = $chunk . $buffer;
+
+        $lines = explode("\n", $buffer);
+        // The first element might be a partial line, keep it for the next iteration
+        $buffer = array_shift($lines);
+
+        // Process lines in reverse order
+        for ($i = count($lines) - 1; $i >= 0; $i--) {
+            $line = trim($lines[$i]);
+            if (empty($line))
+                continue;
+
+            $parsed = parseLogLine($line);
+            if (!$parsed)
+                continue;
+
+            // Date Filter
+            if ($filterDate) {
+                $ts = strtotime($parsed['timestamp']);
+                if ($ts) {
+                    $entryDate = date('Y-m-d', $ts);
+                    if ($entryDate !== $filterDate)
+                        continue;
+                } else {
+                    continue;
+                }
+            }
+
+            // Search Filter
+            if ($search) {
+                $searchable = strtolower($line); // Search raw line for performance
+                if (strpos($searchable, $search) === false)
                     continue;
             }
-        }
 
-        if ($search) {
-            $jsonParsed = json_encode($parsed);
-            if (strpos(strtolower($jsonParsed), $search) === false)
-                continue;
-        }
-
-        if ($filterStatus) {
-            if ($filterStatus === 'info' && $parsed['status'] !== 'info') {
-                // loose logic
+            // Status Filter
+            if ($filterStatus) {
+                if ($parsed['status'] !== $filterStatus)
+                    continue;
+            } else {
+                // If no search, hide 'info' and 'unknown' logs
+                if (!$search && ($parsed['status'] === 'info' || $parsed['status'] === 'unknown')) {
+                    continue;
+                }
             }
-            if ($parsed['status'] !== $filterStatus)
-                continue;
-        } else {
-            if (!$search && ($parsed['status'] === 'info' || $parsed['status'] === 'unknown'))
-                continue;
-        }
 
-        if ($totalProcessed >= $offset && $count < $limit) {
-            $parsedLogs[] = $parsed;
-            $count++;
+            if ($totalProcessed >= $offset) {
+                $parsedLogs[] = $parsed;
+                $count++;
+            }
+            $totalProcessed++;
+
+            if ($count >= $limit)
+                break 2;
         }
-        $totalProcessed++;
-        if ($count >= $limit)
-            break;
     }
+    fclose($handle);
 
-    echo json_encode(['logs' => $parsedLogs, 'count' => count($parsedLogs), 'type' => 'syslog']);
+    echo json_encode(['logs' => $parsedLogs, 'count' => count($parsedLogs), 'type' => 'syslog'], JSON_PARTIAL_OUTPUT_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
 }
 
 function parseLogLine($line)
