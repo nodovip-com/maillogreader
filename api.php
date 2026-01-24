@@ -1,7 +1,8 @@
 <?php
 error_reporting(E_ALL);
 ini_set('display_errors', 0); // Hide raw errors from output
-ini_set('memory_limit', '512M'); // Increase memory limit for large JSON logs
+ini_set('memory_limit', '1024M'); // Further increase memory limit
+set_time_limit(0); // Prevent script timeout during large file processing
 
 require_once 'auth.php';
 
@@ -34,62 +35,75 @@ define('SETTINGS_FILE', __DIR__ . '/settings.json');
 
 $action = $_GET['action'] ?? '';
 
-switch ($action) {
-    case 'login':
-        handleLogin();
-        break;
-    case 'logout':
-        logout();
-        echo json_encode(['success' => true]);
-        break;
-    case 'check_auth':
-        echo json_encode([
-            'logged_in' => isLoggedIn(),
-            'user' => $_SESSION['user'] ?? null,
-            'setup_required' => !hasUsers()
-        ]);
-        break;
-    case 'setup_admin':
-        handleSetupAdmin();
-        break;
-    case 'get_users':
-        requireLogin();
-        echo json_encode(array_keys(getUsers()));
-        break;
-    case 'add_user':
-        requireLogin();
-        handleAddUser();
-        break;
-    case 'delete_user':
-        requireLogin();
-        handleDeleteUser();
-        break;
-    case 'get_settings':
-        requireLogin(); // Only logged in users can see settings
-        echo json_encode(getSettings());
-        break;
-    case 'save_settings':
-        requireLogin();
-        handleSaveSettings();
-        break;
-    case 'get_logs':
-        requireLogin();
-        handleGetLogs();
-        break;
-    case 'change_password':
-        requireLogin();
-        handleChangePassword();
-        break;
-    case 'get_available_dates':
-        handleGetAvailableDates();
-        break;
-    case 'get_ip_geo':
-        handleGetIpGeo();
-        break;
-    default:
-        echo json_encode(['success' => false, 'error' => 'Invalid action']);
-        break;
+try {
+    switch ($action) {
+        case 'login':
+            handleLogin();
+            break;
+        case 'logout':
+            logout();
+            echo json_encode(['success' => true]);
+            break;
+        case 'check_auth':
+            echo json_encode([
+                'logged_in' => isLoggedIn(),
+                'user' => $_SESSION['user'] ?? null,
+                'setup_required' => !hasUsers()
+            ]);
+            break;
+        case 'setup_admin':
+            handleSetupAdmin();
+            break;
+        case 'get_users':
+            requireLogin();
+            echo json_encode(array_keys(getUsers()));
+            break;
+        case 'add_user':
+            requireLogin();
+            handleAddUser();
+            break;
+        case 'delete_user':
+            requireLogin();
+            handleDeleteUser();
+            break;
+        case 'get_settings':
+            requireLogin(); // Only logged in users can see settings
+            echo json_encode(getSettings());
+            break;
+        case 'save_settings':
+            requireLogin();
+            handleSaveSettings();
+            break;
+        case 'get_logs':
+            requireLogin();
+            handleGetLogs();
+            break;
+        case 'change_password':
+            requireLogin();
+            handleChangePassword();
+            break;
+        case 'get_available_dates':
+            handleGetAvailableDates();
+            break;
+        case 'get_ip_geo':
+            handleGetIpGeo();
+            break;
+        case 'ping':
+            echo json_encode(['success' => true, 'msg' => 'pong']);
+            break;
+        default:
+            echo json_encode(['success' => false, 'error' => 'Invalid action']);
+            break;
+    }
+} catch (Throwable $e) {
+    if (!headers_sent())
+        header('Content-Type: application/json');
+    echo json_encode([
+        'success' => false,
+        'error' => 'Caught Exception: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine()
+    ], JSON_PARTIAL_OUTPUT_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
 }
+
 
 function handleGetIpGeo()
 {
@@ -136,15 +150,30 @@ function handleGetAvailableDates()
     $type = $settings['log_type'];
 
     if ($type === 'rspamd') {
-        $json = file_get_contents($path);
-        $data = json_decode($json, true);
-        if (is_array($data)) {
-            foreach ($data as $entry) {
-                if (isset($entry['unix_time'])) {
-                    $d = date('Y-m-d', $entry['unix_time']);
-                    $dates[$d] = true;
-                }
+        // Rspamd - Optimized: Do not decode the whole JSON just for dates.
+        // Scan for "unix_time": 123456789 using regex.
+        $handle = fopen($path, "r");
+        if ($handle) {
+            $fsize = filesize($path);
+            $chunk_size = 1024 * 1024; // 1MB chunks
+
+            // Only scan the last 10MB to find recent dates
+            $scan_limit = 10 * 1024 * 1024;
+            if ($fsize > $scan_limit) {
+                fseek($handle, $fsize - $scan_limit);
             }
+
+            while (($chunk = fread($handle, $chunk_size)) !== false) {
+                if (preg_match_all('/"unix_time":\s*(\d+)/', $chunk, $matches)) {
+                    foreach ($matches[1] as $ts) {
+                        $d = date('Y-m-d', (int) $ts);
+                        $dates[$d] = true;
+                    }
+                }
+                if (feof($handle))
+                    break;
+            }
+            fclose($handle);
         }
     } else {
         // Syslog - Optimized: Read from the end of the file
@@ -305,8 +334,8 @@ function handleGetLogs()
         exit;
     }
 
-    if (!is_readable($path)) {
-        echo json_encode(['error' => 'Permission denied: Log file is not readable by the web server user. Path: ' . $path]);
+    if (!is_file($path)) {
+        echo json_encode(['error' => 'Log path is not a valid file: ' . $path], JSON_PARTIAL_OUTPUT_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
         exit;
     }
 
@@ -319,14 +348,15 @@ function handleGetLogs()
 
 function processRspamdLogs($path)
 {
-    // Rspamd logs are usually a large JSON array.
+    // Rspamd logs can be large. 26MB JSON can consume 200MB+ RAM.
     $fsize = filesize($path);
 
-    // If file is larger than 10MB, warn about potential memory issues or handle differently
-    // For now we still need to decode the JSON, but we can try to be more careful.
-    if ($fsize > 20 * 1024 * 1024) {
-        // Simple guard: if file is huge, JSON decode might fail. 
-        // We've increased the memory limit to 512M at the top of the file.
+    // Attempt to set memory limit even higher if possible
+    @ini_set('memory_limit', '1024M');
+
+    if ($fsize > 30 * 1024 * 1024) {
+        // If file is very large, reading the whole thing is dangerous.
+        // For now, we try since we have 1GB limit attempt.
     }
 
     $json = file_get_contents($path);
