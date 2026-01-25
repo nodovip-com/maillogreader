@@ -157,12 +157,6 @@ function handleGetAvailableDates()
             $fsize = filesize($path);
             $chunk_size = 1024 * 1024; // 1MB chunks
 
-            // Only scan the last 10MB to find recent dates
-            $scan_limit = 10 * 1024 * 1024;
-            if ($fsize > $scan_limit) {
-                fseek($handle, $fsize - $scan_limit);
-            }
-
             while (($chunk = fread($handle, $chunk_size)) !== false) {
                 if (preg_match_all('/"unix_time":\s*(\d+)/', $chunk, $matches)) {
                     foreach ($matches[1] as $ts) {
@@ -176,17 +170,9 @@ function handleGetAvailableDates()
             fclose($handle);
         }
     } else {
-        // Syslog - Optimized: Read from the end of the file
-        // Scanning huge files for dates is slow. We limit scanning to the last ~5MB for dates.
+        // Syslog - Optimized: Scan for dates in the whole file
         $handle = fopen($path, "r");
         if ($handle) {
-            $fsize = filesize($path);
-            $max_scan = 5 * 1024 * 1024; // 5MB
-            if ($fsize > $max_scan) {
-                fseek($handle, $fsize - $max_scan);
-                fgets($handle); // Skip partial line
-            }
-
             while (($line = fgets($handle)) !== false) {
                 if (preg_match('/^([A-M][a-z]{2}\s+\d+)/', $line, $m)) {
                     $timestamp = strtotime($m[1]);
