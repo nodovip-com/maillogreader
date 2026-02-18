@@ -36,4 +36,30 @@ if (isset($response['success']) && $response['success']) {
     echo "Raw Response: " . substr($jsonResponse, 0, 200) . "...\n";
 }
 
+// --- Optimize: Update Available Dates Cache ---
+echo "[" . date('Y-m-d H:i:s') . "] updating Date Cache...\n";
+
+$settings = getSettings();
+if ($settings['use_db']) {
+    try {
+        $pdo = getDbConnection($settings);
+        if ($pdo) {
+            // Expensive query, running in background
+            $stmt = $pdo->query("SELECT DISTINCT DATE(timestamp) as log_date FROM mail_logs ORDER BY log_date DESC");
+            $dates = [];
+            while ($row = $stmt->fetch()) {
+                if ($row['log_date'])
+                    $dates[$row['log_date']] = true;
+            }
+            if (!empty($dates)) {
+                $cachePath = __DIR__ . '/cache_dates.json';
+                file_put_contents($cachePath, json_encode(['dates' => array_keys($dates)]));
+                echo "Cache updated: " . count($dates) . " dates found.\n";
+            }
+        }
+    } catch (Exception $e) {
+        echo "Cache Update Failed: " . $e->getMessage() . "\n";
+    }
+}
+
 echo "[" . date('Y-m-d H:i:s') . "] Sync Completed.\n";

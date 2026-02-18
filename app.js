@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('Mail Log Reader Pro - UI Version 1.3.0 Loaded');
+    console.log('Mail Log Reader Pro - UI Version 1.3.1 Loaded');
 
     // Global Error Handler for Debugging
     window.onerror = function (msg, url, line, col, error) {
@@ -585,8 +585,12 @@ document.addEventListener('DOMContentLoaded', () => {
     async function initApp() {
         // Load initial settings to know log type
         await loadSettingsToState();
-        await initCalendar(); // Init calendar
+
+        // Performance Optimization: Run Calendar Init and Log Fetch in parallel
+        // This prevents a slow date-query from blocking the log table display
+        initCalendar();
         fetchLogs(true);
+
         startAutoRefresh();
         triggerBackgroundSync(true); // Auto-sync on load (lazy)
     }

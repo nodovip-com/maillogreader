@@ -101,7 +101,7 @@ session_start();
                         <button class="dropdown-item" id="change-password-btn">Change Password</button>
                         <div class="dropdown-divider"></div>
                         <div class="dropdown-header" style="font-size: 0.7rem; opacity: 0.7; padding: 0.2rem 1rem;">
-                            Version 1.1.0</div>
+                            Version 1.3.1</div>
                         <button class="dropdown-item" id="logout-btn">Logout</button>
                     </div>
                 </div>
@@ -342,7 +342,7 @@ session_start();
         </div>
 
         <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-        <script src="app.js?v=1.1.0"></script>
+        <script src="app.js?v=1.3.1"></script>
 </body>
 
 </html>
