@@ -2,38 +2,49 @@
 
 > **A modern, secure, and real-time interface for analyzing mail logs (Postfix/Syslog & Rspamd).**
 
-Mail Log Reader Pro transforms raw, hard-to-read log files into a powerful, interactive visual dashboard. Designed for system administrators who need to monitor mail flow with style, security, and efficiency.
+Mail Log Reader Pro transforms raw, hard-to-read log files into a powerful, interactive visual dashboard. Now powered by a **Database-First Architecture** for lightning-fast performance and historical analysis.
 
 ---
 
 ## ✨ Key Features
 
+*   **⚡ High-Performance Database Engine**: 
+    *   **MySQL/MariaDB Integration**: Stores logs in a relational database for instant searching and filtering of millions of records.
+    *   **Smart Sync**: Background process intelligently imports new logs without blocking the UI.
+    *   **Lazy Loading**: New "Smart Sync" ensures the interface stays responsive even during heavy log rotation.
 *   **🎨 Premium "Liquid Glass" Design**: Modern dark interface with blur effects and transparencies.
 *   **🌍 Interactive Threat Map**: 
-    *   **Cyber Visualization**: Real-time 2D world map with animated "flight paths" (IP-to-Server).
-    *   **Map Interactions**: Click dots or lines to see log details in a refined "Mini Liquid Glass" popup.
-    *   **Live Statistics**: Automatic "Top Countries" leaderboard and real-time traffic feed.
+    *   **Real-time Attack Map**: See where mail is originating from across the globe.
+    *   **Animated Paths**: Lines connect source countries to the server.
 *   **🔒 Enterprise Security**:
-    *   **MFA (2FA)**: Secure login with Time-based One-Time Password (TOTP) compatible with Google Authenticator/Authy.
-    *   **Secure Storage**: Bcrypt password hashing to protect user credentials.
+    *   **MFA (2FA)**: Secure login with Time-based One-Time Password (TOTP).
+    *   **Secure Storage**: Bcrypt password hashing.
 *   **📅 Smart Date Filtering**:
-    *   **Interactive Calendar**: Easily filter logs by specific dates, automatically highlighting days with available data (Flatpickr integration).
+    *   **Instant Calendar**: Caches available dates for immediate loading, even with years of history.
 *   **📂 Multi-Log Engine**:
     *   **Universal Syslog**: Compatible with standard Postfix/Sendmail logs.
-    *   **⚡ Rspamd Integration**: Native support for `rspamd_history_json`. Visualizes **Scores**, **Actions**, and **Symbols** with color-coded toxicity indicators.
-*   **⚡ High-Performance Architecture**:
-    *   **Parallel Geolocation**: Releases PHP session locks to allow simultaneous IP resolution.
-    *   **Incremental Rendering**: Visual feedback as data arrives; no waiting for full-batch completion.
-*   **⏱️ Real-Time Monitoring**: Automatic log updates without page reloads (Silent Polling).
-*   **⚙️ Dynamic Configuration**: Switch log types and paths directly from the UI.
-*   **🛡️ User Management**:
-    *   **Auto Setup Mode**: Guided creation of the first admin account.
-    *   **Admin Panel**: Add and remove users directly from the interface.
+    *   **⚡ Rspamd Integration**: Native support for `rspamd_history_json`.
 
 ---
 
 ## 🚀 Installation & Setup
 
+### 1. Prerequisites
+*   **PHP**: 7.4 or higher
+*   **MySQL / MariaDB**: Verified with MySQL 5.7+ and MariaDB 10.3+
+*   **Web Server**: Apache Nginx / IIS
+*   **Extensions**: `pdo_mysql`, `json`, `mbstring`
+
+### 2. Database Setup
+Create a new database and import the schema:
+
+1.  Create a database (e.g., `maillogreader`).
+2.  Import `schema.sql`:
+    ```bash
+    mysql -u root -p maillogreader < schema.sql
+    ```
+
+### 3. Application Setup
 1.  **Clone the Repository**
     ```bash
     git clone https://your-repo/maillogreader.git
@@ -44,55 +55,54 @@ Mail Log Reader Pro transforms raw, hard-to-read log files into a powerful, inte
     ```bash
     cp config.sample.php config.php
     ```
-    *Note: `users.json` is automatically created during the "Initial Setup" screen in the browser.*
 
-3.  **Permissions (Critical!)**
-    The web server (www-data/apache/nginx) needs permissions to:
-    *   **Read** the log files.
-    *   **Write** to the directory (to manage `users.json` and `settings.json`).
-
+3.  **Permissions**
+    The web server needs **Write** access to the directory to manage `users.json`, `settings.json`, and cache files.
     ```bash
-    chown www-data:www-data .
-    chmod 770 .
+    chown -R www-data:www-data .
+    chmod -R 770 .
     ```
 
----
+### 4. Cron Job (Crucial for 24/7 Sync) ⏰
+To ensure logs are synced even when no one is watching the dashboard, you **MUST** set up a Cron Job.
 
-## 📖 How It Works
-
-### 1. Dashboard
-*   **Syslog Mode**: Displays Timestamp, Status (Sent/Deferred/Error), Component, and Message.
-*   **Rspamd Mode**: Displays Score, Action (Reject/No Action), Subject, and Spam Symbols.
-
-### 2. Threat Map
-Toggle the **Map View** to visualize geographic data:
-*   **Real-time Attack Map**: See where mail is originating from across the globe.
-*   **Animated Paths**: Lines connect source countries to the server, highlighting traffic patterns.
-*   **Interactive Details**: Click any node on the map to trigger a detailed "Liquid Glass" information card showing Subject, Sender, and Score.
-
-### 3. Configuration
-Access **Settings** from the user menu:
-*   Select Log Type (`Standard Mail Log` or `Rspamd History`).
-*   Set absolute path (e.g., `/var/log/rspamd/history.json`).
-
-### 4. Security & MFA
-*   On first launch, you will be prompted to create an Admin account.
-*   Scan the **QR Code** with your Authenticator App to enable MFA.
-*   Subsequent logins require username, password, and the 6-digit code.
-
-### 5. Advanced Analysis
-*   **Geo Flags**: Visual country indicators for IPs (shown in List & Map views).
-*   **Queue ID Filter**: Click any Queue ID to filter logs and trace an entire message trajectory.
-*   **Symbol Explorer (Rspamd)**: Detailed descriptions of spam scores.
+1.  Open Crontab:
+    ```bash
+    crontab -e
+    ```
+2.  Add the following line (run every minute):
+    ```bash
+    * * * * * /usr/bin/php /var/www/html/maillogreader/cron_sync.php >> /var/log/maillog_sync.log 2>&1
+    ```
+    *Adjust paths (`/var/www/html...`) to match your installation.*
 
 ---
 
-## 🛠️ Requirements
+## ⚙️ Configuration
 
-*   **PHP**: 7.4+
-*   **Web Server**: Apache/Nginx/IIS
-*   **Browser**: Modern (Chrome, Edge, Firefox)
-*   **No Database**: Zero-dependency (Flatfile JSON storage).
+1.  Access the web interface.
+2.  Log in (Default setup will guide you to create an Admin user).
+3.  Go to **Settings** (User Icon -> Settings).
+4.  **Database Connection**:
+    *   Enable **"Use Database"**.
+    *   Enter Host, Database Name, User, and Password.
+5.  **Log File Path**:
+    *   Enter the absolute path to your log file (e.g., `/var/log/rspamd/history.json` or `/var/log/mail.log`).
+
+---
+
+## 🛠️ Troubleshooting
+
+### "504 Gateway Timeout"
+*   **Solution**: Ensure the Cron Job is running. The web interface uses a "Smart Sync" that relies on the background process keeping the DB relatively up-to-date.
+*   **Verify**: Run `php cron_sync.php` manually in the terminal to see if it imports logs correctly.
+
+### "No Logs Found" / "Waiting for Sync"
+*   If using Rspamd, ensure `history.json` is being updated by the service.
+*   Check file permissions: The Web User (`www-data`) and the Cron User must both be able to read the log file.
+
+### "Slow Initial Load"
+*   The system generates a `cache_dates.json` file via the Cron Job to speed up loading. Ensure `cron_sync.php` has write permissions to the application directory.
 
 ---
 
