@@ -166,10 +166,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (syncBtn) {
         syncBtn.addEventListener('click', () => {
             console.log('Sync button clicked');
-            handleSync();
+            if (confirm('Start Sync? This will try to import logs into MySQL.')) {
+                handleSync();
+            }
         });
     } else {
-        console.error('sync-btn NOT FOUND in DOM');
+        console.error('sync-btn NOT FOUND in DOM - is the HTML correct?');
     }
 
     async function loadSettings() {
@@ -199,9 +201,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!syncBtn) return;
         syncBtn.disabled = true;
         const originalContent = syncBtn.innerHTML;
-        syncBtn.textContent = 'Syncing...';
+        syncBtn.innerHTML = '<span class="spinner-small"></span> Syncing...';
         try {
             const res = await fetch('api.php?action=sync_logs');
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             if (data.success) {
                 alert(`Sync complete! Imported ${data.imported} new logs.`);
@@ -210,7 +213,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert('Sync failed: ' + (data.error || 'Unknown error'));
             }
         } catch (e) {
-            alert('Sync error: ' + e.message);
+            console.error('Sync error:', e);
+            alert('Sync request error: ' + e.message + '\nCheck console for details.');
         } finally {
             syncBtn.disabled = false;
             syncBtn.innerHTML = originalContent;
@@ -266,6 +270,9 @@ document.addEventListener('DOMContentLoaded', () => {
         testDbBtn.addEventListener('click', async () => {
             console.log('Test Connection clicked');
             const msg = document.getElementById('settings-msg');
+            msg.textContent = 'Preparing test...';
+            msg.style.color = 'var(--text-secondary)';
+
             testDbBtn.disabled = true;
             testDbBtn.textContent = 'Testing...';
 
@@ -280,13 +287,19 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             try {
-                await fetch('api.php?action=save_settings', {
+                // Save settings first
+                const saveRes = await fetch('api.php?action=save_settings', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
+                const saveData = await saveRes.json();
+                if (!saveData.success) {
+                    throw new Error('Could not save settings for test: ' + saveData.error);
+                }
 
                 const res = await fetch('api.php?action=test_db');
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const data = await res.json();
                 console.log('Test DB Result:', data);
                 if (data.success) {
@@ -297,6 +310,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     msg.textContent = data.error;
                 }
             } catch (e) {
+                console.error('Test DB error:', e);
                 msg.style.color = 'var(--error-color)';
                 msg.textContent = 'Connection test failed: ' + e.message;
             } finally {

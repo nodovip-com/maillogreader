@@ -135,7 +135,8 @@ function getDbConnection($settings = null, &$errorMsg = null)
         $dsn_no_db = "mysql:host=$db_host;charset=utf8mb4";
         $pdo = new PDO($dsn_no_db, $db_user, $db_pass, [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_TIMEOUT => 5
         ]);
 
         // Create database if not exists
@@ -146,7 +147,8 @@ function getDbConnection($settings = null, &$errorMsg = null)
         $dsn = "mysql:host=$db_host;dbname=$db_name;charset=utf8mb4";
         $pdo = new PDO($dsn, $db_user, $db_pass, [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_TIMEOUT => 5
         ]);
 
         // Create table if not exists using schema.sql content
