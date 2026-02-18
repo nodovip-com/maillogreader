@@ -159,6 +159,12 @@ function getDbConnection($settings = null, &$errorMsg = null)
                 $sql = file_get_contents($schemaFile);
                 $pdo->exec($sql);
             }
+        } else {
+            // Schema Evolution: Check for missing columns
+            $colCheck = $pdo->query("SHOW COLUMNS FROM `mail_logs` LIKE 'symbols'");
+            if ($colCheck->rowCount() === 0) {
+                $pdo->exec("ALTER TABLE `mail_logs` ADD COLUMN `symbols` TEXT AFTER `score` ");
+            }
         }
 
         return $pdo;

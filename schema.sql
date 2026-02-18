@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS `mail_logs` (
     `status` VARCHAR(50),
     `action` VARCHAR(50), -- Rspamd specific
     `score` FLOAT, -- Rspamd specific
+    `symbols` TEXT, -- Rspamd specific
     `queue_id` VARCHAR(100),
     `sender` VARCHAR(255),
     `recipient` TEXT,
