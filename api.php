@@ -633,79 +633,46 @@ function syncRspamdFile($path, $pdo, $lazy = false)
     if (!$contentToParse)
         return 0;
 
-    // Optimized Manual Parser using strpbrk/strpos (Fast & Robust)
-    // jumping between delimiters is much faster than $i++ loop in PHP.
+    // "Explode & Validate" Parser (Robust Fallback)
+    // We assume the file is a standard JSON array of objects: [{...}, {...}]
+    // We split by the standard delimiter "}, {" and try to repair/decode each chunk.
+    // This is incredibly fast (regex split) and tolerant of messy tails.
 
-    $len = strlen($contentToParse);
-    $pos = 0;
-    $braceDepth = 0;
-    $startPos = -1;
+    // clean ends
+    $chunk = trim($contentToParse);
+    // remove potential trailing ] or starting [
+    $chunk = trim($chunk, "[],\n\r\t");
 
-    while ($pos < $len) {
-        // Find next interesting character: " { } or \ (for escaping)
-        // We only care about \ if we are inside a string, but strpbrk doesn't know context.
-        // So we search for ["{}\\] 
+    // Split by object boundary
+    // structure is: ... } , { ...
+    $parts = preg_split('/\}\s*,\s*\{/', $chunk);
 
-        $remainder = substr($contentToParse, $pos);
-        $next = strpbrk($remainder, '"{}');
-        if ($next === false)
-            break;
+    $totalParts = count($parts);
+    for ($i = 0; $i < $totalParts; $i++) {
+        $raw = $parts[$i];
 
-        $offset = strpos($remainder, $next[0]);
-        $absPos = $pos + $offset;
-        $char = $contentToParse[$absPos];
+        // Reconstruct the braces lost during split
+        // First item needs closing }, Last item needs starting {, Middle need both
+        $candidate = $raw;
+        if ($i > 0)
+            $candidate = '{' . $candidate;
+        if ($i < $totalParts - 1)
+            $candidate = $candidate . '}';
 
-        if ($char === '"') {
-            // String detected. We must skip it entirely, handling escaped quotes.
-            $strStart = $absPos + 1;
-            // Find closing quote
-            while (true) {
-                $closeQuote = strpos($contentToParse, '"', $strStart);
-                if ($closeQuote === false) {
-                    $pos = $len; // End of file inside string
-                    break 2;
-                }
+        // Special case: Single item found (no split), or first/last item might maintain its own braces
+        // If the split consumed the braces, we added them. 
+        // But if the file was just "{...}", split wouldn't happen.
+        // Let's rely on basic reconstruction.
 
-                // Check if escaped
-                $backslashes = 0;
-                $j = 1;
-                while (($closeQuote - $j) >= 0 && $contentToParse[$closeQuote - $j] === '\\') {
-                    $backslashes++;
-                    $j++;
-                }
+        // Ensure it starts/ends with braces if they are missing
+        if (substr(trim($candidate), 0, 1) !== '{')
+            $candidate = '{' . $candidate;
+        if (substr(trim($candidate), -1) !== '}')
+            $candidate = $candidate . '}';
 
-                if ($backslashes % 2 === 0) {
-                    // Not escaped, real close
-                    $pos = $closeQuote + 1;
-                    continue 2; // Check next token
-                } else {
-                    // Escaped, keep searching
-                    $strStart = $closeQuote + 1;
-                }
-            }
-        } elseif ($char === '{') {
-            if ($braceDepth === 0) {
-                $startPos = $absPos;
-            }
-            $braceDepth++;
-            $pos = $absPos + 1;
-        } elseif ($char === '}') {
-            if ($braceDepth > 0) {
-                $braceDepth--;
-                if ($braceDepth === 0) {
-                    // Object closed
-                    $objLen = $absPos - $startPos + 1;
-                    $jsonStr = substr($contentToParse, $startPos, $objLen);
-                    $obj = json_decode($jsonStr, true);
-                    if ($obj && isset($obj['unix_time'])) {
-                        $data[] = $obj;
-                    }
-                    $startPos = -1;
-                }
-            }
-            $pos = $absPos + 1;
-        } else {
-            $pos = $absPos + 1;
+        $obj = json_decode($candidate, true);
+        if ($obj && isset($obj['unix_time'])) {
+            $data[] = $obj;
         }
     }
 
