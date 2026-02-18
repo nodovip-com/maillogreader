@@ -166,7 +166,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (syncBtn) {
         syncBtn.addEventListener('click', () => {
             console.log('Sync button clicked');
-            alert('Sync button clicked - starting handleSync');
             handleSync();
         });
     } else {
@@ -266,7 +265,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (testDbBtn) {
         testDbBtn.addEventListener('click', async () => {
             console.log('Test Connection clicked');
-            alert('Test Connection clicked');
             const msg = document.getElementById('settings-msg');
             testDbBtn.disabled = true;
             testDbBtn.textContent = 'Testing...';
