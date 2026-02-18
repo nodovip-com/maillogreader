@@ -105,27 +105,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function showError(msg) {
-        if (backendError) {
-            backendError.innerHTML = msg;
-            backendError.classList.remove('hidden');
+        if (elements.backendError) {
+            elements.backendError.innerHTML = msg;
+            elements.backendError.classList.remove('hidden');
         }
     }
 
     // --- UI Controls ---
-    const userMenuTrigger = document.getElementById('user-menu-trigger');
-    const userDropdown = document.getElementById('user-dropdown');
-
-    // --- Modals ---
-    // Password
-    const passModal = document.getElementById('password-modal-overlay');
-    const passClose = document.getElementById('modal-close');
-    const passCancel = document.getElementById('modal-cancel');
-    const passForm = document.getElementById('change-password-form');
-
-    // Settings
-    const settingsModal = document.getElementById('settings-modal-overlay');
-    const settingsForm = document.getElementById('settings-form');
-
     // Map State
     let isMapView = false;
     let mapChart = null;
@@ -385,28 +371,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
 
-    // --- Users Modal Logic ---
-    const usersBtn = document.getElementById('users-btn');
-    const usersModal = document.getElementById('users-modal-overlay');
-    const settingsModalOverlay = document.getElementById('settings-modal-overlay'); // This was already declared as settingsModal, keeping for consistency with instruction
-
-
-    const addUserForm = document.getElementById('add-user-form');
-    const usersList = document.getElementById('users-list');
-
-    // MFA Elements for New User
-    const newUserQrContainer = document.getElementById('new-user-qr-container');
-    const newUserQrImg = document.getElementById('new-user-qr-img');
-    const newUserNameDisplay = document.getElementById('new-user-name-display');
-
-    if (usersBtn) usersBtn.addEventListener('click', (e) => { e.stopPropagation(); openUsersModal(); });
-    if (usersClose) usersClose.addEventListener('click', () => usersModal.classList.remove('show'));
+    if (elements.usersBtn) elements.usersBtn.onclick = (e) => { e.stopPropagation(); openUsersModal(); };
+    if (elements.usersClose) elements.usersClose.onclick = () => { if (elements.usersModal) elements.usersModal.classList.remove('show'); };
 
     function openUsersModal() {
-        if (!usersModal) return;
-        userDropdown.classList.remove('show');
-        usersModal.classList.add('show');
-        if (newUserQrContainer) newUserQrContainer.style.display = 'none'; // Reset QR view
+        if (!elements.usersModal) return;
+        if (elements.userDropdown) elements.userDropdown.classList.remove('show');
+        elements.usersModal.classList.add('show');
+        if (elements.newUserQrContainer) elements.newUserQrContainer.style.display = 'none'; // Reset QR view
         fetchUsers();
     }
 
@@ -418,7 +390,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderUsersList(users) {
-        usersList.innerHTML = '';
+        if (elements.usersList) elements.usersList.innerHTML = '';
         users.forEach(u => {
             const li = document.createElement('li');
             li.style.padding = '0.5rem 1rem';
