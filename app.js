@@ -1,21 +1,43 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('Mail Log Reader Pro - UI Version 1.0.2 Loaded');
+    console.log('Mail Log Reader Pro - UI Version 1.0.4 Loaded');
+
+    // Global Error Handler for Debugging
+    window.onerror = function (msg, url, line, col, error) {
+        const errorMsg = `JS Error: ${msg}\nLine: ${line}\nURL: ${url}`;
+        console.error(errorMsg, error);
+        alert(errorMsg);
+        return false;
+    };
+
     // Elements
-    const loginScreen = document.getElementById('login-screen');
-    const dashboard = document.getElementById('dashboard');
-    const loginForm = document.getElementById('login-form');
-    const loginError = document.getElementById('login-error');
-    const logoutBtn = document.getElementById('logout-btn');
-    const logsBody = document.getElementById('logs-body');
-    const logsHeader = document.getElementById('logs-header'); // New ID
-    const searchInput = document.getElementById('search-input');
-    const statusFilter = document.getElementById('status-filter');
-    const refreshBtn = document.getElementById('refresh-btn');
-    const autoRefreshSelect = document.getElementById('auto-refresh');
-    const loader = document.getElementById('loader');
-    const currentUserSpan = document.getElementById('current-user');
-    const logsContainer = document.querySelector('.logs-container');
-    const backendError = document.getElementById('backend-error');
+    const elements = {
+        loginScreen: document.getElementById('login-screen'),
+        dashboard: document.getElementById('dashboard'),
+        loginForm: document.getElementById('login-form'),
+        loginError: document.getElementById('login-error'),
+        logoutBtn: document.getElementById('logout-btn'),
+        logsBody: document.getElementById('logs-body'),
+        logsHeader: document.getElementById('logs-header'),
+        searchInput: document.getElementById('search-input'),
+        statusFilter: document.getElementById('status-filter'),
+        refreshBtn: document.getElementById('refresh-btn'),
+        autoRefreshSelect: document.getElementById('auto-refresh'),
+        loader: document.getElementById('loader'),
+        currentUserSpan: document.getElementById('current-user'),
+        logsContainer: document.querySelector('.logs-container'),
+        backendError: document.getElementById('backend-error'),
+        testDbBtn: document.getElementById('test-db-btn'),
+        syncBtn: document.getElementById('sync-btn'),
+        settingsBtn: document.getElementById('settings-btn'),
+        settingsClose: document.getElementById('settings-close'),
+        settingsCancel: document.getElementById('settings-cancel'),
+        settingsMsg: document.getElementById('settings-msg')
+    };
+
+    console.log('Essential UI Elements:', Object.keys(elements).reduce((acc, key) => {
+        acc[key] = !!elements[key];
+        return acc;
+    }, {}));
 
     // State
     let refreshInterval = null;
@@ -67,17 +89,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Modals ---
     // Password
-    const changePasswordBtn = document.getElementById('change-password-btn');
     const passModal = document.getElementById('password-modal-overlay');
     const passClose = document.getElementById('modal-close');
     const passCancel = document.getElementById('modal-cancel');
     const passForm = document.getElementById('change-password-form');
 
     // Settings
-    const settingsBtn = document.getElementById('settings-btn');
     const settingsModal = document.getElementById('settings-modal-overlay');
-    const settingsClose = document.getElementById('settings-close');
-    const settingsCancel = document.getElementById('settings-cancel');
     const settingsForm = document.getElementById('settings-form');
 
     // Map State
@@ -155,23 +173,80 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    if (settingsBtn) settingsBtn.addEventListener('click', (e) => { e.stopPropagation(); openSettingsModal(); });
-    if (settingsClose) settingsClose.addEventListener('click', closeSettingsModal);
-    if (settingsCancel) settingsCancel.addEventListener('click', closeSettingsModal);
+    // --- Settings Modal Listeners ---
+    if (elements.settingsBtn) elements.settingsBtn.onclick = (e) => { e.stopPropagation(); openSettingsModal(); };
+    if (elements.settingsClose) elements.settingsClose.onclick = closeSettingsModal;
+    if (elements.settingsCancel) elements.settingsCancel.onclick = closeSettingsModal;
 
-    const testDbBtn = document.getElementById('test-db-btn');
-    const syncBtn = document.getElementById('sync-btn');
-    console.log('Buttons found:', { syncBtn: !!syncBtn, testDbBtn: !!testDbBtn });
-
-    if (syncBtn) {
-        syncBtn.addEventListener('click', () => {
-            console.log('Sync button clicked');
-            if (confirm('Start Sync? This will try to import logs into MySQL.')) {
+    // --- Immediate Event Listeners for DB ---
+    if (elements.syncBtn) {
+        elements.syncBtn.onclick = () => {
+            console.log('Sync button clicked via onclick');
+            if (confirm('¿Iniciar sincronización con MySQL?')) {
                 handleSync();
             }
-        });
-    } else {
-        console.error('sync-btn NOT FOUND in DOM - is the HTML correct?');
+        };
+    }
+
+    if (elements.testDbBtn) {
+        elements.testDbBtn.onclick = async () => {
+            console.log('Test Connection clicked via onclick');
+            handleTestDbClick();
+        };
+    }
+
+    async function handleTestDbClick() {
+        const msg = elements.settingsMsg;
+        if (!msg) return;
+
+        msg.textContent = 'Preparing test...';
+        msg.style.color = 'var(--text-secondary)';
+
+        elements.testDbBtn.disabled = true;
+        const originalText = elements.testDbBtn.textContent;
+        elements.testDbBtn.textContent = 'Testing...';
+
+        const payload = {
+            log_type: document.getElementById('setting-log-type').value,
+            log_path: document.getElementById('setting-log-path').value,
+            db_host: document.getElementById('setting-db-host')?.value || '',
+            db_name: document.getElementById('setting-db-name')?.value || '',
+            db_user: document.getElementById('setting-db-user')?.value || '',
+            db_pass: document.getElementById('setting-db-pass')?.value || '',
+            use_db: true
+        };
+
+        try {
+            // Save settings first
+            const saveRes = await fetch('api.php?action=save_settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const saveData = await saveRes.json();
+            if (!saveData.success) {
+                throw new Error('Could not save settings for test: ' + saveData.error);
+            }
+
+            const res = await fetch('api.php?action=test_db');
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            console.log('Test DB Result:', data);
+            if (data.success) {
+                msg.style.color = 'var(--success-color)';
+                msg.textContent = data.msg;
+            } else {
+                msg.style.color = 'var(--error-color)';
+                msg.textContent = data.error;
+            }
+        } catch (e) {
+            console.error('Test DB error:', e);
+            msg.style.color = 'var(--error-color)';
+            msg.textContent = 'Connection test failed: ' + e.message;
+        } finally {
+            elements.testDbBtn.disabled = false;
+            elements.testDbBtn.textContent = originalText;
+        }
     }
 
     async function loadSettings() {
