@@ -633,21 +633,71 @@ function syncRspamdFile($path, $pdo, $lazy = false)
     if (!$contentToParse)
         return 0;
 
-    // Optimized Regex Extraction (Fastest) with increased limits
-    // We abandoned the manual character loop because it was too slow (~43s in PHP).
-    // PCRE is C-optimized and can parse 5MB in milliseconds if we raise the limits.
+    // Hybrid Tokenizer Parser (Best of both worlds: Fast & Robust)
+    // 1. Scan for control characters using PCRE (C-speed)
+    // 2. Process logic in PHP only on the interesting characters
 
-    @ini_set('pcre.backtrack_limit', '10000000');
-    @ini_set('pcre.recursion_limit', '10000000');
+    // Find all control chars: { } " \
+    preg_match_all('/["{}\\\\]/', $contentToParse, $matches, PREG_OFFSET_CAPTURE);
 
-    // Recursive pattern matches balanced braces { ... { ... } }
-    $pattern = '/\{(?:[^{}]|(?R))*\}/';
+    $tokens = $matches[0]; // Array of [char, offset]
+    $braceDepth = 0;
+    $startPos = -1;
+    $inString = false;
+    $countTokens = count($tokens);
 
-    if (preg_match_all($pattern, $contentToParse, $matches)) {
-        foreach ($matches[0] as $jsonStr) {
-            $obj = json_decode($jsonStr, true);
-            if ($obj && isset($obj['unix_time'])) {
-                $data[] = $obj;
+    for ($i = 0; $i < $countTokens; $i++) {
+        $char = $tokens[$i][0];
+        $offset = $tokens[$i][1];
+
+        // Handle String State
+        if ($inString) {
+            if ($char === '"') {
+                // Check for escapement lookbehind
+                // We need to count preceding backslashes to see if this quote is escaped
+                // Since we only captured control chars, we can check previous tokens or just look at the string
+                $escaped = false;
+                $backslashes = 0;
+                $j = 1;
+                while (($offset - $j) >= 0 && $contentToParse[$offset - $j] === '\\') {
+                    $backslashes++;
+                    $j++;
+                }
+                if ($backslashes % 2 === 1) {
+                    $escaped = true;
+                }
+
+                if (!$escaped) {
+                    $inString = false;
+                }
+            }
+            continue;
+        }
+
+        if ($char === '"') {
+            $inString = true;
+            continue;
+        }
+
+        if ($char === '{') {
+            if ($braceDepth === 0) {
+                $startPos = $offset;
+            }
+            $braceDepth++;
+        } elseif ($char === '}') {
+            if ($braceDepth > 0) {
+                $braceDepth--;
+                if ($braceDepth === 0) {
+                    // Start of object to End of object (inclusive)
+                    $len = $offset - $startPos + 1;
+                    $jsonStr = substr($contentToParse, $startPos, $len);
+
+                    $obj = json_decode($jsonStr, true);
+                    if ($obj && isset($obj['unix_time'])) {
+                        $data[] = $obj;
+                    }
+                    $startPos = -1;
+                }
             }
         }
     }
