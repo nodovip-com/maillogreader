@@ -604,19 +604,63 @@ function syncRspamdFile($path, $pdo, $lazy = false)
     if (!$contentToParse)
         return 0;
 
-    // Recursive pattern to match balanced braces { ... { ... } ... }
-    // This extracts valid JSON objects even if the surrounding array syntax is broken by our partial read
-    $pattern = '/\{(?:[^{}]|(?R))*\}/';
+    // Manual Brute-Force Extraction (Safest for large logs & avoids Regex stack limits)
+    // We scan the 5MB string linearly and extract balanced {...} blocks.
 
-    if (preg_match_all($pattern, $contentToParse, $matches)) {
-        foreach ($matches[0] as $jsonStr) {
-            $obj = json_decode($jsonStr, true);
-            if ($obj && isset($obj['unix_time'])) { // Ensure it's a valid log entry
-                $data[] = $obj;
+    $len = strlen($contentToParse);
+    $braceDepth = 0;
+    $buffer = '';
+    $inString = false;
+    $escape = false;
+
+    for ($i = 0; $i < $len; $i++) {
+        $char = $contentToParse[$i];
+
+        // Handle string state to ignore braces inside strings
+        if ($inString) {
+            $buffer .= $char;
+            if ($escape) {
+                $escape = false;
+            } elseif ($char === '\\') {
+                $escape = true;
+            } elseif ($char === '"') {
+                $inString = false; // End of string
             }
+            continue;
+        }
+
+        if ($char === '"') {
+            $inString = true;
+            $buffer .= $char;
+            continue;
+        }
+
+        if ($char === '{') {
+            if ($braceDepth === 0) {
+                $buffer = '{'; // Start new object
+            } else {
+                $buffer .= '{';
+            }
+            $braceDepth++;
+        } elseif ($char === '}') {
+            if ($braceDepth > 0) {
+                $buffer .= '}';
+                $braceDepth--;
+                if ($braceDepth === 0) {
+                    // Closed a top-level object!
+                    $obj = json_decode($buffer, true);
+                    if ($obj && isset($obj['unix_time'])) {
+                        $data[] = $obj;
+                    }
+                    $buffer = ''; // Reset for next object
+                }
+            }
+        } elseif ($braceDepth > 0) {
+            $buffer .= $char; // Accumulated content
         }
     }
 
+    // Process found data
     if (empty($data))
         return 0;
 
