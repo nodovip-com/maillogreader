@@ -34,7 +34,6 @@ register_shutdown_function(function () {
 define('SETTINGS_FILE', __DIR__ . '/settings.json');
 
 $action = $_GET['action'] ?? '';
-file_put_contents('debug_api.log', "[" . date('Y-m-d H:i:s') . "] Action: $action\n", FILE_APPEND);
 
 try {
     switch ($action) {
