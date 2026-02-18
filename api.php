@@ -551,31 +551,39 @@ function syncRspamdFile($path, $pdo)
         score, symbols, queue_id, sender, recipient, size, user, scan_time
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
+    $pdo->beginTransaction();
     $count = 0;
-    foreach ($data as $entry) {
-        $parsed = parseRspamdEntry($entry);
-        $logHash = $entry['message-id'] ?? md5(json_encode($entry));
+    try {
+        foreach ($data as $entry) {
+            $parsed = parseRspamdEntry($entry);
+            $logHash = $entry['message-id'] ?? md5(json_encode($entry));
 
-        $stmt->execute([
-            $logHash,
-            date('Y-m-d H:i:s', $parsed['unix_time']),
-            $parsed['unix_time'],
-            $parsed['host'],
-            $parsed['component'],
-            $parsed['message'],
-            $parsed['status'],
-            $parsed['action'],
-            $parsed['score'],
-            json_encode($parsed['symbols']),
-            $parsed['queue_id'],
-            $parsed['sender'],
-            $parsed['recipient'],
-            $parsed['size'],
-            $parsed['user'],
-            $parsed['scan_time']
-        ]);
-        if ($stmt->rowCount() > 0)
-            $count++;
+            $stmt->execute([
+                $logHash,
+                date('Y-m-d H:i:s', $parsed['unix_time']),
+                $parsed['unix_time'],
+                $parsed['host'],
+                $parsed['component'],
+                $parsed['message'],
+                $parsed['status'],
+                $parsed['action'],
+                $parsed['score'],
+                json_encode($parsed['symbols']),
+                $parsed['queue_id'],
+                $parsed['sender'],
+                $parsed['recipient'],
+                $parsed['size'],
+                $parsed['user'],
+                $parsed['scan_time']
+            ]);
+            if ($stmt->rowCount() > 0)
+                $count++;
+        }
+        $pdo->commit();
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        error_log("Sync failed: " . $e->getMessage());
+        throw $e;
     }
     return $count;
 }
@@ -591,29 +599,37 @@ function syncSyslogFile($path, $pdo)
         queue_id, sender, recipient
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
+    $pdo->beginTransaction();
     $count = 0;
-    while (($line = fgets($handle)) !== false) {
-        $line = trim($line);
-        if (empty($line))
-            continue;
+    try {
+        while (($line = fgets($handle)) !== false) {
+            $line = trim($line);
+            if (empty($line))
+                continue;
 
-        $parsed = parseLogLine($line);
-        $logHash = hash('sha256', $line);
+            $parsed = parseLogLine($line);
+            $logHash = hash('sha256', $line);
 
-        $stmt->execute([
-            $logHash,
-            date('Y-m-d H:i:s', $parsed['unix_time']),
-            $parsed['unix_time'],
-            $parsed['host'],
-            $parsed['component'],
-            $parsed['message'],
-            $parsed['status'],
-            $parsed['queue_id'],
-            $parsed['sender'],
-            $parsed['recipient']
-        ]);
-        if ($stmt->rowCount() > 0)
-            $count++;
+            $stmt->execute([
+                $logHash,
+                date('Y-m-d H:i:s', $parsed['unix_time']),
+                $parsed['unix_time'],
+                $parsed['host'],
+                $parsed['component'],
+                $parsed['message'],
+                $parsed['status'],
+                $parsed['queue_id'],
+                $parsed['sender'],
+                $parsed['recipient']
+            ]);
+            if ($stmt->rowCount() > 0)
+                $count++;
+        }
+        $pdo->commit();
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        error_log("Sync failed: " . $e->getMessage());
+        throw $e;
     }
     fclose($handle);
     return $count;
