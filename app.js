@@ -159,6 +159,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (settingsClose) settingsClose.addEventListener('click', closeSettingsModal);
     if (settingsCancel) settingsCancel.addEventListener('click', closeSettingsModal);
 
+    const testDbBtn = document.getElementById('test-db-btn');
+    const syncBtn = document.getElementById('sync-btn');
+    if (syncBtn) {
+        syncBtn.addEventListener('click', handleSync);
+    }
+
     async function loadSettings() {
         const res = await fetch('api.php?action=get_settings');
         const data = await res.json();
@@ -249,7 +255,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    const testDbBtn = document.getElementById('test-db-btn');
     if (testDbBtn) {
         testDbBtn.addEventListener('click', async () => {
             const msg = document.getElementById('settings-msg');
@@ -297,10 +302,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const usersModal = document.getElementById('users-modal-overlay');
     const settingsModalOverlay = document.getElementById('settings-modal-overlay'); // This was already declared as settingsModal, keeping for consistency with instruction
 
-    const syncBtn = document.getElementById('sync-btn');
-    if (syncBtn) {
-        syncBtn.addEventListener('click', handleSync);
-    }
 
     const addUserForm = document.getElementById('add-user-form');
     const usersList = document.getElementById('users-list');
