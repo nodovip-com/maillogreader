@@ -210,29 +210,47 @@ function handleGetIpGeo()
 function handleGetAvailableDates()
 {
     $settings = getSettings();
-    $path = $settings['log_path'];
+    $use_db = $settings['use_db'] ?? false;
+    $dates = [];
 
+    if ($use_db) {
+        $pdo = getDbConnection($settings);
+        if ($pdo) {
+            try {
+                // Get unique dates from the mail_logs table
+                $stmt = $pdo->query("SELECT DISTINCT DATE(timestamp) as log_date FROM mail_logs ORDER BY log_date DESC");
+                while ($row = $stmt->fetch()) {
+                    if ($row['log_date']) {
+                        $dates[$row['log_date']] = true;
+                    }
+                }
+                // Return immediately if we got dates from DB
+                if (!empty($dates)) {
+                    echo json_encode(['dates' => array_keys($dates)], JSON_PARTIAL_OUTPUT_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
+                    return;
+                }
+            } catch (PDOException $e) {
+                error_log("Failed to get dates from DB: " . $e->getMessage());
+            }
+        }
+    }
+
+    // Fallback: File-based scanning if DB is disabled, empty, or fails
+    $path = $settings['log_path'];
     if (!file_exists($path)) {
-        echo json_encode(['dates' => []]);
+        echo json_encode(['dates' => array_keys($dates)]); // Might have some from DB if it was partially successful
         return;
     }
 
-    $dates = [];
     $type = $settings['log_type'];
-
     if ($type === 'rspamd') {
-        // Rspamd - Optimized: Do not decode the whole JSON just for dates.
-        // Scan for "unix_time": 123456789 using regex.
+        // Rspamd optimization
         $handle = fopen($path, "r");
         if ($handle) {
-            $fsize = filesize($path);
-            $chunk_size = 1024 * 1024; // 1MB chunks
-
-            while (($chunk = fread($handle, $chunk_size)) !== false) {
+            while (($chunk = fread($handle, 1024 * 1024)) !== false) {
                 if (preg_match_all('/"unix_time":\s*(\d+)/', $chunk, $matches)) {
                     foreach ($matches[1] as $ts) {
-                        $d = date('Y-m-d', (int) $ts);
-                        $dates[$d] = true;
+                        $dates[date('Y-m-d', (int) $ts)] = true;
                     }
                 }
                 if (feof($handle))
@@ -241,15 +259,14 @@ function handleGetAvailableDates()
             fclose($handle);
         }
     } else {
-        // Syslog - Optimized: Scan for dates in the whole file
+        // Syslog optimization
         $handle = fopen($path, "r");
         if ($handle) {
             while (($line = fgets($handle)) !== false) {
                 if (preg_match('/^([A-M][a-z]{2}\s+\d+)/', $line, $m)) {
                     $timestamp = strtotime($m[1]);
                     if ($timestamp) {
-                        $d = date('Y-m-d', $timestamp);
-                        $dates[$d] = true;
+                        $dates[date('Y-m-d', $timestamp)] = true;
                     }
                 }
             }
@@ -414,6 +431,20 @@ function handleGetLogs()
         $dbError = null;
         $pdo = getDbConnection($settings, $dbError);
         if ($pdo) {
+            // Lazy Sync: Trigger synchronization if this is the first page load (offset 0)
+            if (isset($_GET['offset']) && intval($_GET['offset']) === 0 && !isset($_GET['search']) && !isset($_GET['date'])) {
+                try {
+                    // We only sync the main file in "lazy" mode to keep it fast
+                    if ($type === 'rspamd') {
+                        syncRspamdFile($path, $pdo);
+                    } else {
+                        syncSyslogFile($path, $pdo);
+                    }
+                } catch (Exception $e) {
+                    error_log("Lazy Sync failed: " . $e->getMessage());
+                }
+            }
+
             $limit = isset($_GET['limit']) ? intval($_GET['limit']) : 100;
             $offset = isset($_GET['offset']) ? intval($_GET['offset']) : 0;
             $search = isset($_GET['search']) ? $_GET['search'] : '';
