@@ -495,8 +495,9 @@ function handleGetLogs()
             echo json_encode(['logs' => $logs, 'count' => count($logs), 'type' => 'db_' . $type]);
             return;
         } else {
-            error_log("DB Enabled but connection failed: $dbError. Falling back to files.");
-            $dbWarning = "MySQL connection failed ($dbError). Reading logs directly from files.";
+            error_log("DB Enabled but connection failed: $dbError.");
+            echo json_encode(['success' => false, 'error' => "Database connection failed: $dbError. Please check settings."]);
+            return;
         }
     }
 
