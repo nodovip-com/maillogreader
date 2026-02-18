@@ -100,6 +100,8 @@ session_start();
                         <button class="dropdown-item" id="settings-btn">Settings</button>
                         <button class="dropdown-item" id="change-password-btn">Change Password</button>
                         <div class="dropdown-divider"></div>
+                        <div class="dropdown-header" style="font-size: 0.7rem; opacity: 0.7; padding: 0.2rem 1rem;">
+                            Version 1.0.7</div>
                         <button class="dropdown-item" id="logout-btn">Logout</button>
                     </div>
                 </div>

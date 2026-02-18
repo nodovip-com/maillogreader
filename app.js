@@ -860,6 +860,12 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        // Handle warnings (e.g. file not found or permission denied)
+        if (data.warning && elements.backendError) {
+            elements.backendError.textContent = data.warning;
+            elements.backendError.classList.remove('hidden');
+        }
+
         if (data.type && data.type !== currentLogType) {
             currentLogType = data.type;
             updateTableHeader();
