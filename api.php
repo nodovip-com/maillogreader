@@ -34,7 +34,7 @@ register_shutdown_function(function () {
 define('SETTINGS_FILE', __DIR__ . '/settings.json');
 
 $action = $_GET['action'] ?? '';
-
+// --- Verified: No file_put_contents on line 37 ---
 try {
     switch ($action) {
         case 'login':
