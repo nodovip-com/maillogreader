@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('Mail Log Reader Pro - UI Version 1.0.8 Loaded');
+    console.log('Mail Log Reader Pro - UI Version 1.0.9 Loaded');
 
     // Global Error Handler for Debugging
     window.onerror = function (msg, url, line, col, error) {
@@ -1168,7 +1168,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             tr.addEventListener('click', () => toggleDetails(tr, log));
-            logsBody.appendChild(tr);
+            if (elements.logsBody) elements.logsBody.appendChild(tr);
         });
 
         addInfiniteScrollTrigger();
@@ -1191,7 +1191,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let detailContent = '';
 
-        if (currentLogType === 'rspamd') {
+        if (currentLogType === 'rspamd' || currentLogType === 'db_rspamd') {
             // Symbols rendering
             const symbolsContainer = document.createElement('div');
             symbolsContainer.className = 'symbols-container';
