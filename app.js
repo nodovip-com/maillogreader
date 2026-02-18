@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('Mail Log Reader Pro - UI Version 1.0.9 Loaded');
+    console.log('Mail Log Reader Pro - UI Version 1.1.0 Loaded');
 
     // Global Error Handler for Debugging
     window.onerror = function (msg, url, line, col, error) {
@@ -874,7 +874,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const newLogs = data.logs || [];
         if (newLogs.length < currentLimit) allLogsLoaded = true;
 
-        if (reset && isBackground) logsBody.innerHTML = '';
+        if (reset && isBackground && elements.logsBody) elements.logsBody.innerHTML = '';
+        console.log(`[Dashboard] Showing logs from: ${data.type || 'unknown'}`);
         renderLogs(newLogs, reset);
         enhanceLogsWithGeo(newLogs);
         currentOffset += newLogs.length;
@@ -1078,7 +1079,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateGeoUI() {
-        if (currentLogType === 'rspamd') {
+        if (currentLogType === 'rspamd' || currentLogType === 'db_rspamd') {
             const hostDivs = document.querySelectorAll('.log-row td:nth-child(5) div:first-child');
             hostDivs.forEach(div => {
                 const ip = div.textContent.trim();
@@ -1255,6 +1256,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function enhanceIPs(container) {
+        updateGeoUI(); // Reuse existing logic
+    }
+
     // Helpers
     function getScoreClass(score, action) {
         if (action === 'reject' || score > 10) return 'color:var(--error-color); border:1px solid var(--error-color);';
@@ -1322,7 +1327,7 @@ document.addEventListener('DOMContentLoaded', () => {
         trigger.id = 'load-more-trigger'; trigger.className = 'load-more-container';
         trigger.innerHTML = '<button class="btn" style="width:auto; background:var(--card-bg); border:1px solid var(--border-color);">Load More Logs...</button>';
         trigger.querySelector('button').addEventListener('click', () => fetchLogs(false));
-        logsBody.parentNode.parentNode.appendChild(trigger);
+        if (elements.logsBody) elements.logsBody.parentNode.parentNode.appendChild(trigger);
     }
 
     // Init if already loaded
