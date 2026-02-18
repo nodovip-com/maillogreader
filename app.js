@@ -161,8 +161,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const testDbBtn = document.getElementById('test-db-btn');
     const syncBtn = document.getElementById('sync-btn');
+    console.log('Buttons found:', { syncBtn: !!syncBtn, testDbBtn: !!testDbBtn });
+
     if (syncBtn) {
-        syncBtn.addEventListener('click', handleSync);
+        syncBtn.addEventListener('click', () => {
+            console.log('Sync button clicked');
+            alert('Sync button clicked - starting handleSync');
+            handleSync();
+        });
+    } else {
+        console.error('sync-btn NOT FOUND in DOM');
     }
 
     async function loadSettings() {
@@ -257,6 +265,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (testDbBtn) {
         testDbBtn.addEventListener('click', async () => {
+            console.log('Test Connection clicked');
+            alert('Test Connection clicked');
             const msg = document.getElementById('settings-msg');
             testDbBtn.disabled = true;
             testDbBtn.textContent = 'Testing...';
