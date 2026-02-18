@@ -619,16 +619,34 @@ function syncRspamdFile($path, $pdo, $lazy = false)
     // This handles both array-wrapped files "[{...},{...}]" and newline-delimited "{...}\n{...}"
     // It also robustly handles partial reads from tail.
 
-    $contentToParse = '';
+    // "Dual-End Read" Strategy
+    // We don't know if the file is sorted Oldest->Newest (Standard) or Newest->Oldest (Archive).
+    // So we read the LAST 5MB (Standard Tail) AND the FIRST 5MB (Archive Head).
+    // This ensures we catch new logs regardless of how Rspamd writes the file.
 
-    if ($lazy && filesize($path) > 5 * 1024 * 1024) {
-        $handle = fopen($path, 'r');
-        fseek($handle, -5 * 1024 * 1024, SEEK_END); // Read last 5MB
-        $contentToParse = fread($handle, 5 * 1024 * 1024);
-        fclose($handle);
+    $chunks = [];
+    $handle = fopen($path, 'r');
+    $fsize = filesize($path);
+    $readSize = 5 * 1024 * 1024;
+
+    // 1. Read Tail (Standard Append)
+    if ($fsize > $readSize) {
+        fseek($handle, -$readSize, SEEK_END);
+        $chunks[] = fread($handle, $readSize);
     } else {
-        $contentToParse = file_get_contents($path);
+        $chunks[] = fread($handle, $fsize);
     }
+
+    // 2. Read Head (Reverse Sort / Archive)
+    // Only if file is large enough to have a distinct head
+    if ($fsize > $readSize * 2) {
+        rewind($handle);
+        $chunks[] = fread($handle, $readSize);
+    }
+
+    fclose($handle);
+
+    $contentToParse = implode("\n", $chunks);
 
     if (!$contentToParse)
         return 0;
