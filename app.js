@@ -288,6 +288,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const res = await fetch('api.php?action=test_db');
                 const data = await res.json();
+                console.log('Test DB Result:', data);
                 if (data.success) {
                     msg.style.color = 'var(--success-color)';
                     msg.textContent = data.msg;

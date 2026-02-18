@@ -115,7 +115,7 @@ try {
 /**
  * Get MySQL connection, creating DB and tables if they don't exist.
  */
-function getDbConnection($settings = null)
+function getDbConnection($settings = null, &$errorMsg = null)
 {
     if ($settings === null) {
         $settings = getSettings();
@@ -161,7 +161,8 @@ function getDbConnection($settings = null)
 
         return $pdo;
     } catch (PDOException $e) {
-        error_log("Database Connection Error: " . $e->getMessage());
+        $errorMsg = $e->getMessage();
+        error_log("Database Connection Error: " . $errorMsg);
         return null;
     }
 }
@@ -477,11 +478,12 @@ function handleGetLogs()
 
 function handleTestDb()
 {
-    $pdo = getDbConnection();
+    $error = null;
+    $pdo = getDbConnection(null, $error);
     if ($pdo) {
         echo json_encode(['success' => true, 'msg' => 'Connected successfully and database is ready.']);
     } else {
-        echo json_encode(['success' => false, 'error' => 'Could not connect to database. Check credentials.']);
+        echo json_encode(['success' => false, 'error' => 'Could not connect to database: ' . ($error ?? 'Unknown error')]);
     }
 }
 
