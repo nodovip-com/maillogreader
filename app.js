@@ -31,7 +31,35 @@ document.addEventListener('DOMContentLoaded', () => {
         settingsBtn: document.getElementById('settings-btn'),
         settingsClose: document.getElementById('settings-close'),
         settingsCancel: document.getElementById('settings-cancel'),
-        settingsMsg: document.getElementById('settings-msg')
+        settingsMsg: document.getElementById('settings-msg'),
+        settingsModal: document.getElementById('settings-modal-overlay'),
+        settingsForm: document.getElementById('settings-form'),
+        setupScreen: document.getElementById('setup-screen'),
+        setupForm: document.getElementById('setup-form'),
+        setupError: document.getElementById('setup-error'),
+        setupQrContainer: document.getElementById('setup-qr-container'),
+        setupQrImg: document.getElementById('setup-qr-img'),
+        userMenuTrigger: document.getElementById('user-menu-trigger'),
+        userDropdown: document.getElementById('user-dropdown'),
+        changePasswordBtn: document.getElementById('change-password-btn'),
+        passModal: document.getElementById('password-modal-overlay'),
+        passClose: document.getElementById('modal-close'),
+        passCancel: document.getElementById('modal-cancel'),
+        passForm: document.getElementById('change-password-form'),
+        usersBtn: document.getElementById('users-btn'),
+        usersModal: document.getElementById('users-modal-overlay'),
+        usersClose: document.getElementById('users-close'),
+        addUserForm: document.getElementById('add-user-form'),
+        usersList: document.getElementById('users-list'),
+        usersMsg: document.getElementById('users-msg'),
+        newUserQrContainer: document.getElementById('new-user-qr-container'),
+        newUserQrImg: document.getElementById('new-user-qr-img'),
+        newUserNameDisplay: document.getElementById('new-user-name-display'),
+        toggleMapBtn: document.getElementById('toggle-map-btn'),
+        mapView: document.getElementById('map-view'),
+        dateFilter: document.getElementById('date-filter'),
+        clearDateBtn: document.getElementById('clear-date'),
+        backendError: document.getElementById('backend-error')
     };
 
     console.log('Essential UI Elements:', Object.keys(elements).reduce((acc, key) => {
@@ -103,37 +131,41 @@ document.addEventListener('DOMContentLoaded', () => {
     let mapChart = null;
 
     // --- Toggle Menu ---
-    if (userMenuTrigger) {
-        userMenuTrigger.addEventListener('click', (e) => {
+    if (elements.userMenuTrigger) {
+        elements.userMenuTrigger.onclick = (e) => {
             e.stopPropagation();
-            userDropdown.classList.toggle('show');
-        });
+            if (elements.userDropdown) elements.userDropdown.classList.toggle('show');
+        };
     }
     window.addEventListener('click', () => {
-        if (userDropdown && userDropdown.classList.contains('show')) userDropdown.classList.remove('show');
+        if (elements.userDropdown && elements.userDropdown.classList.contains('show')) {
+            elements.userDropdown.classList.remove('show');
+        }
     });
 
     // --- Password Modal Logic ---
     function openPassModal() {
-        if (passModal) {
-            passModal.classList.add('show');
-            userDropdown.classList.remove('show');
+        if (elements.passModal) {
+            elements.passModal.classList.add('show');
+            if (elements.userDropdown) elements.userDropdown.classList.remove('show');
             document.getElementById('old-password').value = '';
             document.getElementById('new-password').value = '';
             document.getElementById('password-msg').textContent = '';
         }
     }
-    function closePassModal() { if (passModal) passModal.classList.remove('show'); }
+    function closePassModal() { if (elements.passModal) elements.passModal.classList.remove('show'); }
 
-    if (changePasswordBtn) changePasswordBtn.addEventListener('click', (e) => { e.stopPropagation(); openPassModal(); });
-    if (passClose) passClose.addEventListener('click', closePassModal);
-    if (passCancel) passCancel.addEventListener('click', closePassModal);
+    if (elements.changePasswordBtn) elements.changePasswordBtn.onclick = (e) => { e.stopPropagation(); openPassModal(); };
+    if (elements.passClose) elements.passClose.onclick = closePassModal;
+    if (elements.passCancel) elements.passCancel.onclick = closePassModal;
 
-    if (passForm) {
-        passForm.addEventListener('submit', async (e) => {
+    if (elements.passForm) {
+        elements.passForm.onsubmit = async (e) => {
             e.preventDefault();
             const msg = document.getElementById('password-msg');
-            msg.textContent = 'Updating...'; msg.style.color = 'var(--text-secondary)';
+            if (msg) {
+                msg.textContent = 'Updating...'; msg.style.color = 'var(--text-secondary)';
+            }
 
             try {
                 const res = await fetch('api.php?action=change_password', {
@@ -144,24 +176,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 const data = await res.json();
                 if (data.success) {
-                    msg.textContent = 'Success!'; msg.style.color = 'var(--success-color)';
+                    if (msg) {
+                        msg.textContent = 'Success!'; msg.style.color = 'var(--success-color)';
+                    }
                     setTimeout(closePassModal, 1500);
                 } else {
-                    msg.textContent = data.error || 'Failed'; msg.style.color = 'var(--error-color)';
+                    if (msg) {
+                        msg.textContent = data.error || 'Failed'; msg.style.color = 'var(--error-color)';
+                    }
                 }
-            } catch (err) { msg.textContent = 'Error'; }
-        });
+            } catch (err) { if (msg) msg.textContent = 'Error'; }
+        };
     }
 
     // --- Settings Modal Logic ---
     function openSettingsModal() {
-        if (!settingsModal) return;
-        if (userDropdown) userDropdown.classList.remove('show');
-        if (settingsModal) settingsModal.classList.add('show');
+        if (!elements.settingsModal) return;
+        if (elements.userDropdown) elements.userDropdown.classList.remove('show');
+        elements.settingsModal.classList.add('show');
         loadSettings();
     }
     function closeSettingsModal() {
-        if (settingsModal) settingsModal.classList.remove('show');
+        if (elements.settingsModal) elements.settingsModal.classList.remove('show');
     }
 
     // Toggle DB fields based on checkbox
@@ -272,11 +308,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function handleSync() {
-        const syncBtn = document.getElementById('sync-btn');
-        if (!syncBtn) return;
-        syncBtn.disabled = true;
-        const originalContent = syncBtn.innerHTML;
-        syncBtn.innerHTML = '<span class="spinner-small"></span> Syncing...';
+        if (!elements.syncBtn) return;
+        elements.syncBtn.disabled = true;
+        const originalContent = elements.syncBtn.innerHTML;
+        elements.syncBtn.innerHTML = '<span class="spinner-small"></span> Syncing...';
         try {
             const res = await fetch('api.php?action=sync_logs');
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -291,17 +326,19 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Sync error:', e);
             alert('Sync request error: ' + e.message + '\nCheck console for details.');
         } finally {
-            syncBtn.disabled = false;
-            syncBtn.innerHTML = originalContent;
+            elements.syncBtn.disabled = false;
+            elements.syncBtn.innerHTML = originalContent;
         }
     }
 
-    if (settingsForm) {
-        settingsForm.addEventListener('submit', async (e) => {
+    if (elements.settingsForm) {
+        elements.settingsForm.onsubmit = async (e) => {
             e.preventDefault();
-            const msg = document.getElementById('settings-msg');
-            msg.textContent = 'Saving...';
-            msg.style.color = 'var(--text-secondary)';
+            const msg = elements.settingsMsg;
+            if (msg) {
+                msg.textContent = 'Saving...';
+                msg.style.color = 'var(--text-secondary)';
+            }
 
             const payload = {
                 log_type: document.getElementById('setting-log-type').value,
@@ -321,79 +358,32 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 const data = await res.json();
                 if (data.success) {
-                    msg.style.color = 'var(--success-color)';
-                    msg.textContent = data.warning ? data.warning : 'Settings saved successfully';
+                    if (msg) {
+                        msg.style.color = 'var(--success-color)';
+                        msg.textContent = data.warning ? data.warning : 'Settings saved successfully';
+                    }
                     if (!data.warning) {
                         setTimeout(() => {
-                            if (settingsModal) settingsModal.classList.remove('show');
+                            if (elements.settingsModal) elements.settingsModal.classList.remove('show');
                             currentOffset = 0;
                             fetchLogs(true);
                         }, 1500);
                     }
                 } else {
-                    msg.style.color = 'var(--error-color)';
-                    msg.textContent = data.error;
+                    if (msg) {
+                        msg.style.color = 'var(--error-color)';
+                        msg.textContent = data.error;
+                    }
                 }
             } catch (e) {
-                msg.textContent = 'Error: ' + e.message;
-                msg.style.color = 'var(--error-color)';
-            }
-        });
-    }
-
-    if (testDbBtn) {
-        testDbBtn.addEventListener('click', async () => {
-            console.log('Test Connection clicked');
-            const msg = document.getElementById('settings-msg');
-            msg.textContent = 'Preparing test...';
-            msg.style.color = 'var(--text-secondary)';
-
-            testDbBtn.disabled = true;
-            testDbBtn.textContent = 'Testing...';
-
-            const payload = {
-                log_type: document.getElementById('setting-log-type').value,
-                log_path: document.getElementById('setting-log-path').value,
-                db_host: document.getElementById('setting-db-host')?.value || '',
-                db_name: document.getElementById('setting-db-name')?.value || '',
-                db_user: document.getElementById('setting-db-user')?.value || '',
-                db_pass: document.getElementById('setting-db-pass')?.value || '',
-                use_db: true
-            };
-
-            try {
-                // Save settings first
-                const saveRes = await fetch('api.php?action=save_settings', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                const saveData = await saveRes.json();
-                if (!saveData.success) {
-                    throw new Error('Could not save settings for test: ' + saveData.error);
-                }
-
-                const res = await fetch('api.php?action=test_db');
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const data = await res.json();
-                console.log('Test DB Result:', data);
-                if (data.success) {
-                    msg.style.color = 'var(--success-color)';
-                    msg.textContent = data.msg;
-                } else {
+                if (msg) {
+                    msg.textContent = 'Error: ' + e.message;
                     msg.style.color = 'var(--error-color)';
-                    msg.textContent = data.error;
                 }
-            } catch (e) {
-                console.error('Test DB error:', e);
-                msg.style.color = 'var(--error-color)';
-                msg.textContent = 'Connection test failed: ' + e.message;
-            } finally {
-                testDbBtn.disabled = false;
-                testDbBtn.textContent = 'Test Connection';
             }
-        });
+        };
     }
+
 
     // --- Users Modal Logic ---
     const usersBtn = document.getElementById('users-btn');
@@ -445,7 +435,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Delete Listener
             li.querySelector('.btn-delete-user').addEventListener('click', () => deleteUser(u));
-            usersList.appendChild(li);
+            if (elements.usersList) elements.usersList.appendChild(li);
         });
     }
 
@@ -464,12 +454,12 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) { }
     }
 
-    if (addUserForm) {
-        addUserForm.addEventListener('submit', async (e) => {
+    if (elements.addUserForm) {
+        elements.addUserForm.onsubmit = async (e) => {
             e.preventDefault();
-            const msg = document.getElementById('users-msg');
-            msg.textContent = '';
-            newUserQrContainer.style.display = 'none'; // Hide previous
+            const msg = elements.usersMsg;
+            if (msg) msg.textContent = '';
+            if (elements.newUserQrContainer) elements.newUserQrContainer.style.display = 'none'; // Hide previous
 
             const u = document.getElementById('new-username').value.trim();
             const p = document.getElementById('new-user-pass').value;
@@ -483,22 +473,26 @@ document.addEventListener('DOMContentLoaded', () => {
                     document.getElementById('new-username').value = '';
                     document.getElementById('new-user-pass').value = '';
                     fetchUsers();
-                    msg.style.color = 'var(--success-color)';
-                    msg.textContent = 'User created successfully.';
+                    if (msg) {
+                        msg.style.color = 'var(--success-color)';
+                        msg.textContent = 'User created successfully.';
+                    }
 
                     // Show QR Code
-                    if (data.secret) {
+                    if (data.secret && elements.newUserQrContainer && elements.newUserQrImg && elements.newUserNameDisplay) {
                         const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=otpauth://totp/MailLogReader:${encodeURIComponent(u)}?secret=${data.secret}&issuer=MailLogReader`;
-                        newUserQrImg.src = qrUrl;
-                        newUserNameDisplay.textContent = u;
-                        newUserQrContainer.style.display = 'block';
+                        elements.newUserQrImg.src = qrUrl;
+                        elements.newUserNameDisplay.textContent = u;
+                        elements.newUserQrContainer.style.display = 'block';
                     }
                 } else {
-                    msg.style.color = 'var(--error-color)';
-                    msg.textContent = data.error;
+                    if (msg) {
+                        msg.style.color = 'var(--error-color)';
+                        msg.textContent = data.error;
+                    }
                 }
-            } catch (e) { }
-        });
+            } catch (e) { if (msg) msg.textContent = 'Error'; }
+        };
     }
 
     // --- Auth & Init ---
@@ -509,37 +503,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (data.setup_required) {
             // Show Setup Screen
-            if (document.getElementById('setup-screen')) document.getElementById('setup-screen').classList.remove('hidden');
-            if (loginScreen) loginScreen.classList.add('hidden');
-            if (dashboard) dashboard.classList.add('hidden');
+            if (elements.setupScreen) elements.setupScreen.classList.remove('hidden');
+            if (elements.loginScreen) elements.loginScreen.classList.add('hidden');
+            if (elements.dashboard) elements.dashboard.classList.add('hidden');
         } else if (data.logged_in) {
             // Show Dashboard
-            if (document.getElementById('setup-screen')) document.getElementById('setup-screen').classList.add('hidden');
-            if (loginScreen) loginScreen.classList.add('hidden');
-            if (dashboard) dashboard.classList.remove('hidden');
-            if (currentUserSpan) currentUserSpan.textContent = data.user;
+            if (elements.setupScreen) elements.setupScreen.classList.add('hidden');
+            if (elements.loginScreen) elements.loginScreen.classList.add('hidden');
+            if (elements.dashboard) elements.dashboard.classList.remove('hidden');
+            if (elements.currentUserSpan) elements.currentUserSpan.textContent = data.user;
             initApp();
         } else {
             // Show Login
-            if (document.getElementById('setup-screen')) document.getElementById('setup-screen').classList.add('hidden');
-            if (loginScreen) loginScreen.classList.remove('hidden');
-            if (dashboard) dashboard.classList.add('hidden');
+            if (elements.setupScreen) elements.setupScreen.classList.add('hidden');
+            if (elements.loginScreen) elements.loginScreen.classList.remove('hidden');
+            if (elements.dashboard) elements.dashboard.classList.add('hidden');
         }
     })();
 
     // Setup Form
-    const setupForm = document.getElementById('setup-form');
-    if (setupForm) {
-        setupForm.addEventListener('submit', async (e) => {
+    if (elements.setupForm) {
+        elements.setupForm.onsubmit = async (e) => {
             e.preventDefault();
             const u = document.getElementById('setup-username').value.trim();
             const p = document.getElementById('setup-password').value;
-            const err = document.getElementById('setup-error');
-            const qrContainer = document.getElementById('setup-qr-container');
-            const qrImg = document.getElementById('setup-qr-img');
+            const err = elements.setupError;
+            const qrContainer = elements.setupQrContainer;
+            const qrImg = elements.setupQrImg;
 
             // Hide button to prevent double submit? Or just clear error
-            err.style.display = 'none';
+            if (err) err.style.display = 'none';
 
             try {
                 const res = await fetch('api.php?action=setup_admin', {
@@ -548,11 +541,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const data = await res.json();
                 if (data.success) {
                     // Show QR and wait for user to reload
-                    if (data.secret) {
+                    if (data.secret && qrImg && qrContainer) {
                         const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=otpauth://totp/MailLogReader:${encodeURIComponent(u)}?secret=${data.secret}&issuer=MailLogReader`;
                         qrImg.src = qrUrl;
                         qrContainer.style.display = 'block';
-                        setupForm.querySelector('button').style.display = 'none'; // Hide create button
+                        const btnSubmit = elements.setupForm.querySelector('button');
+                        if (btnSubmit) btnSubmit.style.display = 'none'; // Hide create button
+
                         // User must reload manually or we provide a button "I Scanned It"
                         const btn = document.createElement('button');
                         btn.className = 'btn';
@@ -564,46 +559,54 @@ document.addEventListener('DOMContentLoaded', () => {
                         location.reload();
                     }
                 } else {
-                    err.style.display = 'block'; err.textContent = data.error;
+                    if (err) {
+                        err.style.display = 'block'; err.textContent = data.error;
+                    }
                 }
-            } catch (e) { err.style.display = 'block'; err.textContent = 'Error'; }
-        });
+            } catch (e) { if (err) { err.style.display = 'block'; err.textContent = 'Error'; } }
+        };
     }
 
-    loginForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const username = document.getElementById('username').value.trim();
-        const password = document.getElementById('password').value;
-        const code = document.getElementById('mfa-code').value.trim();
+    if (elements.loginForm) {
+        elements.loginForm.onsubmit = async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            const code = document.getElementById('mfa-code').value.trim();
 
-        loginError.style.display = 'none';
+            if (elements.loginError) elements.loginError.style.display = 'none';
 
-        try {
-            const res = await fetch('api.php?action=login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password, code })
-            });
-            const data = await res.json();
+            try {
+                const res = await fetch('api.php?action=login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password, code })
+                });
+                const data = await res.json();
 
-            if (data.success) {
-                loginScreen.classList.add('hidden');
-                dashboard.classList.remove('hidden');
-                if (currentUserSpan) currentUserSpan.textContent = data.user;
-                fetchLogs(true); // Initial load
-                startAutoRefresh();
-            } else {
-                loginError.textContent = data.error || 'Login failed';
-                loginError.style.display = 'block';
+                if (data.success) {
+                    if (elements.loginScreen) elements.loginScreen.classList.add('hidden');
+                    if (elements.dashboard) elements.dashboard.classList.remove('hidden');
+                    if (elements.currentUserSpan) elements.currentUserSpan.textContent = data.user;
+                    fetchLogs(true); // Initial load
+                    startAutoRefresh();
+                } else {
+                    if (elements.loginError) {
+                        elements.loginError.textContent = data.error || 'Login failed';
+                        elements.loginError.style.display = 'block';
+                    }
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                if (elements.loginError) {
+                    elements.loginError.textContent = 'Network or server error';
+                    elements.loginError.style.display = 'block';
+                }
             }
-        } catch (error) {
-            console.error('Login error:', error);
-            loginError.textContent = 'Network or server error';
-            loginError.style.display = 'block';
-        }
-    });
+        };
+    }
 
-    if (logoutBtn) logoutBtn.addEventListener('click', async () => { await fetch('api.php?action=logout'); location.reload(); });
+    if (elements.logoutBtn) elements.logoutBtn.onclick = async () => { await fetch('api.php?action=logout'); location.reload(); };
 
     // --- Core Logic ---
     async function initApp() {
@@ -623,7 +626,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateTableHeader() {
-        if (!logsHeader) return;
+        if (!elements.logsHeader) return;
         if (currentLogType === 'rspamd') {
             logsHeader.innerHTML = `
                 <tr>
@@ -647,40 +650,40 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    const dateFilter = document.getElementById('date-filter');
-    const clearDateBtn = document.getElementById('clear-date');
-    const toggleMapBtn = document.getElementById('toggle-map-btn');
-    const mapView = document.getElementById('map-view');
+    if (elements.toggleMapBtn) {
+        elements.toggleMapBtn.onclick = () => {
+            isMapView = !isMapView;
+            if (isMapView) {
+                if (elements.logsContainer) elements.logsContainer.classList.add('hidden');
+                if (elements.mapView) elements.mapView.classList.remove('hidden');
+                elements.toggleMapBtn.innerHTML = `
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M4 6h16M4 12h16M4 18h16"></path>
+                    </svg> List View`;
 
-    toggleMapBtn.addEventListener('click', () => {
-        isMapView = !isMapView;
-        if (isMapView) {
-            logsContainer.classList.add('hidden');
-            mapView.classList.remove('hidden');
-            toggleMapBtn.innerHTML = `
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M4 6h16M4 12h16M4 18h16"></path>
-                </svg> List View`;
+                if (!mapChart) initMap();
+                setTimeout(() => { mapChart && mapChart.resize(); }, 100);
+                updateMap(currentLogsData); // Use global store
 
-            if (!mapChart) initMap();
-            setTimeout(() => { mapChart && mapChart.resize(); }, 100);
-            updateMap(currentLogsData); // Use global store
-
-            // Close Popup on background click?
-            mapChart.getZr().on('click', (params) => {
-                if (!params.target) document.getElementById('map-popup').classList.add('hidden');
-            });
-        } else {
-            logsContainer.classList.remove('hidden');
-            mapView.classList.add('hidden');
-            toggleMapBtn.innerHTML = `
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M1 6v13l7-4 7 4 7-4V2l-7 4-7-4-7 4z"></path>
-                    <path d="M8 2v13"></path>
-                    <path d="M16 6v13"></path>
-                </svg> Map View`;
-        }
-    });
+                // Close Popup on background click?
+                if (mapChart) {
+                    mapChart.getZr().on('click', (params) => {
+                        const popup = document.getElementById('map-popup');
+                        if (!params.target && popup) popup.classList.add('hidden');
+                    });
+                }
+            } else {
+                if (elements.logsContainer) elements.logsContainer.classList.remove('hidden');
+                if (elements.mapView) elements.mapView.classList.add('hidden');
+                elements.toggleMapBtn.innerHTML = `
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M1 6v13l7-4 7 4 7-4V2l-7 4-7-4-7 4z"></path>
+                        <path d="M8 2v13"></path>
+                        <path d="M16 6v13"></path>
+                    </svg> Map View`;
+            }
+        };
+    }
 
     let currentLogsData = []; // Store for map visualization
 
@@ -748,7 +751,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const mapPopupContent = document.getElementById('map-popup-content');
     const mapPopupClose = document.getElementById('map-popup-close');
 
-    if (mapPopupClose) mapPopupClose.addEventListener('click', () => mapPopup.classList.add('hidden'));
+    if (mapPopupClose) mapPopupClose.onclick = () => { if (mapPopup) mapPopup.classList.add('hidden'); };
 
     function showMapPopup(log) {
         if (!mapPopup) return;
@@ -794,36 +797,38 @@ document.addEventListener('DOMContentLoaded', () => {
     let calendarInstance = null;
 
     async function initCalendar() {
-        if (!dateFilter) return;
+        if (!elements.dateFilter) return;
 
         // Fetch available dates first
         let availableDates = [];
         const data = await safeFetch('api.php?action=get_available_dates');
         if (data) availableDates = data.dates || [];
 
-        calendarInstance = flatpickr(dateFilter, {
+        calendarInstance = flatpickr(elements.dateFilter, {
             dateFormat: "Y-m-d",
             theme: "dark",
             enable: availableDates.length > 0 ? availableDates : [],
             onChange: (selectedDates, dateStr, instance) => {
                 if (dateStr) {
-                    clearDateBtn.style.display = 'block';
+                    if (elements.clearDateBtn) elements.clearDateBtn.style.display = 'block';
                     currentOffset = 0;
                     fetchLogs(true);
                 }
             }
         });
 
-        if (availableDates.length === 0 && dateFilter) {
+        if (availableDates.length === 0 && elements.dateFilter) {
             console.warn('No available dates found for the calendar.');
         }
 
-        clearDateBtn.addEventListener('click', () => {
-            calendarInstance.clear();
-            clearDateBtn.style.display = 'none';
-            currentOffset = 0;
-            fetchLogs(true);
-        });
+        if (elements.clearDateBtn) {
+            elements.clearDateBtn.onclick = () => {
+                if (calendarInstance) calendarInstance.clear();
+                elements.clearDateBtn.style.display = 'none';
+                currentOffset = 0;
+                fetchLogs(true);
+            };
+        }
     }
 
     function formatTime(unixTime) {
@@ -861,16 +866,16 @@ document.addEventListener('DOMContentLoaded', () => {
             currentOffset = 0;
             allLogsLoaded = false;
             loader.classList.remove('hidden');
-            if (backendError) backendError.classList.add('hidden'); // Reset error
+            if (elements.backendError) elements.backendError.classList.add('hidden'); // Reset error
             await loadSettingsToState();
         }
 
-        const dateVal = dateFilter && dateFilter.value ? dateFilter.value : '';
+        const dateVal = elements.dateFilter && elements.dateFilter.value ? elements.dateFilter.value : '';
 
         const params = new URLSearchParams({
             action: 'get_logs',
-            search: searchInput.value,
-            status: statusFilter.value,
+            search: elements.searchInput ? elements.searchInput.value : '',
+            status: elements.statusFilter ? elements.statusFilter.value : '',
             date: dateVal,
             limit: currentLimit,
             offset: currentOffset
@@ -897,7 +902,7 @@ document.addEventListener('DOMContentLoaded', () => {
         currentOffset += newLogs.length;
 
         isFetching = false;
-        if (!isBackground) loader.classList.add('hidden');
+        if (!isBackground && elements.loader) elements.loader.classList.add('hidden');
     }
 
     // --- Geolocation Logic ---
@@ -1306,21 +1311,25 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Common Controls
-    refreshBtn.addEventListener('click', () => { currentOffset = 0; fetchLogs(true); });
-    searchInput.addEventListener('input', (e) => { // debounce logic
-        clearTimeout(refreshInterval); // pause auto refresh while typing? No, just debounce fetch
-        setTimeout(() => { currentOffset = 0; fetchLogs(true); }, 500);
-    });
-    statusFilter.addEventListener('change', () => { currentOffset = 0; fetchLogs(true); });
+    // Common Controls
+    if (elements.refreshBtn) elements.refreshBtn.onclick = () => { currentOffset = 0; fetchLogs(true); };
+    if (elements.searchInput) {
+        elements.searchInput.oninput = (e) => { // debounce logic
+            clearTimeout(refreshInterval); // pause auto refresh while typing? No, just debounce fetch
+            setTimeout(() => { currentOffset = 0; fetchLogs(true); }, 500);
+        };
+    }
+    if (elements.statusFilter) elements.statusFilter.onchange = () => { currentOffset = 0; fetchLogs(true); };
 
-    autoRefreshSelect.addEventListener('change', startAutoRefresh);
+    if (elements.autoRefreshSelect) elements.autoRefreshSelect.onchange = startAutoRefresh;
     function startAutoRefresh() {
+        if (!elements.autoRefreshSelect) return;
         if (refreshInterval) clearInterval(refreshInterval);
-        const delay = parseInt(autoRefreshSelect.value);
+        const delay = parseInt(elements.autoRefreshSelect.value);
         if (delay > 0) {
             refreshInterval = setInterval(() => {
                 if (!document.querySelector('.log-detail-row')) {
-                    if (logsContainer.scrollTop < 50) {
+                    if (elements.logsContainer && elements.logsContainer.scrollTop < 50) {
                         currentOffset = 0; fetchLogs(true, true);
                     }
                 }
@@ -1339,5 +1348,5 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Init if already loaded
-    if (!dashboard.classList.contains('hidden')) initApp();
+    if (elements.dashboard && !elements.dashboard.classList.contains('hidden')) initApp();
 });
