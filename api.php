@@ -621,13 +621,14 @@ function syncRspamdFile($path, $pdo, $lazy = false)
 
     // "Dual-End Read" Strategy
     // We don't know if the file is sorted Oldest->Newest (Standard) or Newest->Oldest (Archive).
-    // So we read the LAST 5MB (Standard Tail) AND the FIRST 5MB (Archive Head).
+    // So we read the LAST 25MB (Standard Tail) AND the FIRST 25MB (Archive Head).
     // This ensures we catch new logs regardless of how Rspamd writes the file.
+    // 50MB total coverage is enough to catch recent logs even in large 170MB files.
 
     $chunks = [];
     $handle = fopen($path, 'r');
     $fsize = filesize($path);
-    $readSize = 5 * 1024 * 1024;
+    $readSize = 25 * 1024 * 1024; // 25MB per end
 
     // 1. Read Tail (Standard Append)
     if ($fsize > $readSize) {
