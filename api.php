@@ -431,20 +431,6 @@ function handleGetLogs()
         $dbError = null;
         $pdo = getDbConnection($settings, $dbError);
         if ($pdo) {
-            // Lazy Sync: Trigger synchronization if this is the first page load (offset 0)
-            if (isset($_GET['offset']) && intval($_GET['offset']) === 0 && !isset($_GET['search']) && !isset($_GET['date'])) {
-                try {
-                    // We only sync the main file in "lazy" mode to keep it fast
-                    if ($type === 'rspamd') {
-                        syncRspamdFile($path, $pdo);
-                    } else {
-                        syncSyslogFile($path, $pdo);
-                    }
-                } catch (Exception $e) {
-                    error_log("Lazy Sync failed: " . $e->getMessage());
-                }
-            }
-
             $limit = isset($_GET['limit']) ? intval($_GET['limit']) : 100;
             $offset = isset($_GET['offset']) ? intval($_GET['offset']) : 0;
             $search = isset($_GET['search']) ? $_GET['search'] : '';
@@ -552,30 +538,70 @@ function handleSyncLogs()
         return;
     }
 
+    $isLazy = isset($_GET['lazy']) && $_GET['lazy'] === '1';
+
+    // Respond to client immediately if possible to avoid 504
+    if (function_exists('fastcgi_finish_request')) {
+        echo json_encode(['success' => true, 'msg' => 'Sync started in background.']);
+        fastcgi_finish_request();
+    } else {
+        // If not using FPM, we might still block, but we'll try to be fast
+        if ($isLazy) {
+            echo json_encode(['success' => true, 'msg' => 'Sync started.']);
+            // We'll continue processing after echo...
+        }
+    }
+
     $filesToProcess = [$path];
-    if (file_exists($path . '.1')) {
+    // Only process .1 if it's NOT a lazy sync (to keep background worker short)
+    if (!$isLazy && file_exists($path . '.1')) {
         $filesToProcess[] = $path . '.1';
     }
 
     $totalImported = 0;
-
     foreach ($filesToProcess as $file) {
         if ($type === 'rspamd') {
-            $totalImported += syncRspamdFile($file, $pdo);
+            $totalImported += syncRspamdFile($file, $pdo, $isLazy);
         } else {
-            $totalImported += syncSyslogFile($file, $pdo);
+            $totalImported += syncSyslogFile($file, $pdo, $isLazy);
         }
     }
 
-    echo json_encode(['success' => true, 'imported' => $totalImported]);
+    if (!function_exists('fastcgi_finish_request') && !$isLazy) {
+        echo json_encode(['success' => true, 'imported' => $totalImported]);
+    }
 }
 
-function syncRspamdFile($path, $pdo)
+function syncRspamdFile($path, $pdo, $lazy = false)
 {
-    $json = file_get_contents($path);
-    if (!$json)
+    if (!file_exists($path))
         return 0;
-    $data = json_decode($json, true);
+
+    // For large files, we don't want to load everything if lazy
+    if ($lazy && filesize($path) > 5 * 1024 * 1024) {
+        // Read the last 1MB of the file to catch new entries
+        $handle = fopen($path, 'r');
+        fseek($handle, -1024 * 1024, SEEK_END);
+        $jsonChunk = fread($handle, 1024 * 1024);
+        fclose($handle);
+
+        // Find the first complete JSON object in the chunk
+        $startPos = strpos($jsonChunk, '{');
+        if ($startPos !== false) {
+            $jsonChunk = '[' . substr($jsonChunk, $startPos);
+            if (substr(trim($jsonChunk), -1) !== ']')
+                $jsonChunk .= ']';
+            $data = json_decode($jsonChunk, true);
+        } else {
+            return 0;
+        }
+    } else {
+        $json = file_get_contents($path);
+        if (!$json)
+            return 0;
+        $data = json_decode($json, true);
+    }
+
     if (!is_array($data))
         return 0;
 
@@ -585,6 +611,11 @@ function syncRspamdFile($path, $pdo)
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
     $count = 0;
+    // If lazy, we only process the last entries to be super fast
+    if ($lazy) {
+        $data = array_slice($data, -500);
+    }
+
     $chunkSize = 1000;
     $chunks = array_chunk($data, $chunkSize);
 
@@ -592,6 +623,8 @@ function syncRspamdFile($path, $pdo)
         $pdo->beginTransaction();
         try {
             foreach ($chunk as $entry) {
+                if (!isset($entry['unix_time']))
+                    continue;
                 $parsed = parseRspamdEntry($entry);
                 $logHash = $entry['message-id'] ?? md5(json_encode($entry));
 
@@ -620,54 +653,68 @@ function syncRspamdFile($path, $pdo)
         } catch (Exception $e) {
             $pdo->rollBack();
             error_log("Sync failed in chunk: " . $e->getMessage());
-            throw $e;
         }
     }
     return $count;
 }
 
-function syncSyslogFile($path, $pdo)
+function syncSyslogFile($path, $pdo, $lazy = false)
 {
+    if (!file_exists($path))
+        return 0;
     $handle = fopen($path, 'r');
     if (!$handle)
         return 0;
+
+    // Handle lazy sync by reading only the end of the file
+    if ($lazy && filesize($path) > 1024 * 1024) {
+        fseek($handle, -1024 * 1024, SEEK_END);
+        fgets($handle); // Discard partial line
+    }
 
     $stmt = $pdo->prepare("INSERT IGNORE INTO mail_logs (
         log_hash, timestamp, unix_time, host, component, message, status, 
         queue_id, sender, recipient
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
-    $pdo->beginTransaction();
     $count = 0;
-    try {
-        while (($line = fgets($handle)) !== false) {
-            $line = trim($line);
-            if (empty($line))
-                continue;
+    // Process in smaller chunks to be friendly to memory/time
+    while (!feof($handle)) {
+        $pdo->beginTransaction();
+        try {
+            $chunkCount = 0;
+            while ($chunkCount < 1000 && ($line = fgets($handle)) !== false) {
+                $line = trim($line);
+                if (empty($line))
+                    continue;
 
-            $parsed = parseLogLine($line);
-            $logHash = hash('sha256', $line);
+                $parsed = parseLogLine($line);
+                $logHash = hash('sha256', $line);
 
-            $stmt->execute([
-                $logHash,
-                date('Y-m-d H:i:s', $parsed['unix_time']),
-                $parsed['unix_time'],
-                $parsed['host'],
-                $parsed['component'],
-                $parsed['message'],
-                $parsed['status'],
-                $parsed['queue_id'],
-                $parsed['sender'],
-                $parsed['recipient']
-            ]);
-            if ($stmt->rowCount() > 0)
-                $count++;
+                $stmt->execute([
+                    $logHash,
+                    date('Y-m-d H:i:s', $parsed['unix_time']),
+                    $parsed['unix_time'],
+                    $parsed['host'],
+                    $parsed['component'],
+                    $parsed['message'],
+                    $parsed['status'],
+                    $parsed['queue_id'],
+                    $parsed['sender'],
+                    $parsed['recipient']
+                ]);
+                if ($stmt->rowCount() > 0)
+                    $count++;
+                $chunkCount++;
+            }
+            $pdo->commit();
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            error_log("Sync failed in syslog chunk: " . $e->getMessage());
+            break;
         }
-        $pdo->commit();
-    } catch (Exception $e) {
-        $pdo->rollBack();
-        error_log("Sync failed: " . $e->getMessage());
-        throw $e;
+        if (feof($handle) || ($lazy && $count > 2000))
+            break;
     }
     fclose($handle);
     return $count;

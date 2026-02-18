@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('Mail Log Reader Pro - UI Version 1.1.0 Loaded');
+    console.log('Mail Log Reader Pro - UI Version 1.3.0 Loaded');
 
     // Global Error Handler for Debugging
     window.onerror = function (msg, url, line, col, error) {
@@ -59,7 +59,8 @@ document.addEventListener('DOMContentLoaded', () => {
         mapView: document.getElementById('map-view'),
         dateFilter: document.getElementById('date-filter'),
         clearDateBtn: document.getElementById('clear-date'),
-        backendError: document.getElementById('backend-error')
+        backendError: document.getElementById('backend-error'),
+        syncBtn: document.getElementById('sync-btn')
     };
 
     console.log('Essential UI Elements:', Object.keys(elements).reduce((acc, key) => {
@@ -587,6 +588,40 @@ document.addEventListener('DOMContentLoaded', () => {
         await initCalendar(); // Init calendar
         fetchLogs(true);
         startAutoRefresh();
+        triggerBackgroundSync(true); // Auto-sync on load (lazy)
+    }
+
+    async function triggerBackgroundSync(isLazy = false) {
+        if (!elements.syncBtn) return;
+
+        const originalText = elements.syncBtn.innerHTML;
+        if (isLazy) {
+            console.log('[Sync] Triggering background lazy sync...');
+        } else {
+            elements.syncBtn.disabled = true;
+            elements.syncBtn.innerHTML = 'Syncing...';
+        }
+
+        // We don't await this so it doesn't block the UI
+        fetch(`api.php?action=sync_logs${isLazy ? '&lazy=1' : ''}`)
+            .then(res => res.json())
+            .then(data => {
+                console.log('[Sync] Background sync completed:', data);
+                if (!isLazy && elements.syncBtn) {
+                    elements.syncBtn.disabled = false;
+                    elements.syncBtn.innerHTML = originalText;
+                    if (data.success) {
+                        fetchLogs(true); // Refresh logs if manual sync
+                    }
+                }
+            })
+            .catch(err => {
+                console.error('[Sync] Background sync failed:', err);
+                if (!isLazy && elements.syncBtn) {
+                    elements.syncBtn.disabled = false;
+                    elements.syncBtn.innerHTML = originalText;
+                }
+            });
     }
 
     async function loadSettingsToState() {
@@ -1303,6 +1338,8 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
     if (elements.statusFilter) elements.statusFilter.onchange = () => { currentOffset = 0; fetchLogs(true); };
+
+    if (elements.syncBtn) elements.syncBtn.onclick = () => triggerBackgroundSync(false);
 
     if (elements.autoRefreshSelect) elements.autoRefreshSelect.onchange = startAutoRefresh;
     function startAutoRefresh() {
