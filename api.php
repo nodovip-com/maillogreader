@@ -633,65 +633,69 @@ function syncRspamdFile($path, $pdo, $lazy = false)
     if (!$contentToParse)
         return 0;
 
-    // Hybrid Tokenizer Parser (Best of both worlds: Fast & Robust)
-    // 1. Scan for control characters using PCRE (C-speed)
-    // 2. Process logic in PHP only on the interesting characters
+    // Optimized Manual Parser using strpbrk/strpos (Fast & Robust)
+    // jumping between delimiters is much faster than $i++ loop in PHP.
 
-    // Find all control chars: { } " \
-    preg_match_all('/["{}\\\\]/', $contentToParse, $matches, PREG_OFFSET_CAPTURE);
-
-    $tokens = $matches[0]; // Array of [char, offset]
+    $len = strlen($contentToParse);
+    $pos = 0;
     $braceDepth = 0;
     $startPos = -1;
-    $inString = false;
-    $countTokens = count($tokens);
 
-    for ($i = 0; $i < $countTokens; $i++) {
-        $char = $tokens[$i][0];
-        $offset = $tokens[$i][1];
+    while ($pos < $len) {
+        // Find next interesting character: " { } or \ (for escaping)
+        // We only care about \ if we are inside a string, but strpbrk doesn't know context.
+        // So we search for ["{}\\] 
 
-        // Handle String State
-        if ($inString) {
-            if ($char === '"') {
-                // Check for escapement lookbehind
-                // We need to count preceding backslashes to see if this quote is escaped
-                // Since we only captured control chars, we can check previous tokens or just look at the string
-                $escaped = false;
+        $remainder = substr($contentToParse, $pos);
+        $next = strpbrk($remainder, '"{}');
+        if ($next === false)
+            break;
+
+        $offset = strpos($remainder, $next[0]);
+        $absPos = $pos + $offset;
+        $char = $contentToParse[$absPos];
+
+        if ($char === '"') {
+            // String detected. We must skip it entirely, handling escaped quotes.
+            $strStart = $absPos + 1;
+            // Find closing quote
+            while (true) {
+                $closeQuote = strpos($contentToParse, '"', $strStart);
+                if ($closeQuote === false) {
+                    $pos = $len; // End of file inside string
+                    break 2;
+                }
+
+                // Check if escaped
                 $backslashes = 0;
                 $j = 1;
-                while (($offset - $j) >= 0 && $contentToParse[$offset - $j] === '\\') {
+                while (($closeQuote - $j) >= 0 && $contentToParse[$closeQuote - $j] === '\\') {
                     $backslashes++;
                     $j++;
                 }
-                if ($backslashes % 2 === 1) {
-                    $escaped = true;
-                }
 
-                if (!$escaped) {
-                    $inString = false;
+                if ($backslashes % 2 === 0) {
+                    // Not escaped, real close
+                    $pos = $closeQuote + 1;
+                    continue 2; // Check next token
+                } else {
+                    // Escaped, keep searching
+                    $strStart = $closeQuote + 1;
                 }
             }
-            continue;
-        }
-
-        if ($char === '"') {
-            $inString = true;
-            continue;
-        }
-
-        if ($char === '{') {
+        } elseif ($char === '{') {
             if ($braceDepth === 0) {
-                $startPos = $offset;
+                $startPos = $absPos;
             }
             $braceDepth++;
+            $pos = $absPos + 1;
         } elseif ($char === '}') {
             if ($braceDepth > 0) {
                 $braceDepth--;
                 if ($braceDepth === 0) {
-                    // Start of object to End of object (inclusive)
-                    $len = $offset - $startPos + 1;
-                    $jsonStr = substr($contentToParse, $startPos, $len);
-
+                    // Object closed
+                    $objLen = $absPos - $startPos + 1;
+                    $jsonStr = substr($contentToParse, $startPos, $objLen);
                     $obj = json_decode($jsonStr, true);
                     if ($obj && isset($obj['unix_time'])) {
                         $data[] = $obj;
@@ -699,6 +703,9 @@ function syncRspamdFile($path, $pdo, $lazy = false)
                     $startPos = -1;
                 }
             }
+            $pos = $absPos + 1;
+        } else {
+            $pos = $absPos + 1;
         }
     }
 
