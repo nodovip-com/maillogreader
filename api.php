@@ -445,9 +445,11 @@ function handleGetLogs()
 
             $whereStr = implode(" AND ", $where);
             $sql = "SELECT * FROM mail_logs WHERE $whereStr ORDER BY timestamp DESC LIMIT $limit OFFSET $offset";
+            error_log("Fetching logs from DB. Query: $sql");
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
             $logs = $stmt->fetchAll();
+            error_log("Found " . count($logs) . " logs in DB.");
 
             // Format for frontend
             foreach ($logs as &$log) {
@@ -551,39 +553,44 @@ function syncRspamdFile($path, $pdo)
         score, symbols, queue_id, sender, recipient, size, user, scan_time
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
-    $pdo->beginTransaction();
     $count = 0;
-    try {
-        foreach ($data as $entry) {
-            $parsed = parseRspamdEntry($entry);
-            $logHash = $entry['message-id'] ?? md5(json_encode($entry));
+    $chunkSize = 1000;
+    $chunks = array_chunk($data, $chunkSize);
 
-            $stmt->execute([
-                $logHash,
-                date('Y-m-d H:i:s', $parsed['unix_time']),
-                $parsed['unix_time'],
-                $parsed['host'],
-                $parsed['component'],
-                $parsed['message'],
-                $parsed['status'],
-                $parsed['action'],
-                $parsed['score'],
-                json_encode($parsed['symbols']),
-                $parsed['queue_id'],
-                $parsed['sender'],
-                $parsed['recipient'],
-                $parsed['size'],
-                $parsed['user'],
-                $parsed['scan_time']
-            ]);
-            if ($stmt->rowCount() > 0)
-                $count++;
+    foreach ($chunks as $chunk) {
+        $pdo->beginTransaction();
+        try {
+            foreach ($chunk as $entry) {
+                $parsed = parseRspamdEntry($entry);
+                $logHash = $entry['message-id'] ?? md5(json_encode($entry));
+
+                $stmt->execute([
+                    $logHash,
+                    date('Y-m-d H:i:s', $parsed['unix_time']),
+                    $parsed['unix_time'],
+                    $parsed['host'],
+                    $parsed['component'],
+                    $parsed['message'],
+                    $parsed['status'],
+                    $parsed['action'],
+                    $parsed['score'],
+                    json_encode($parsed['symbols']),
+                    $parsed['queue_id'],
+                    $parsed['sender'],
+                    $parsed['recipient'],
+                    $parsed['size'],
+                    $parsed['user'],
+                    $parsed['scan_time']
+                ]);
+                if ($stmt->rowCount() > 0)
+                    $count++;
+            }
+            $pdo->commit();
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            error_log("Sync failed in chunk: " . $e->getMessage());
+            throw $e;
         }
-        $pdo->commit();
-    } catch (Exception $e) {
-        $pdo->rollBack();
-        error_log("Sync failed: " . $e->getMessage());
-        throw $e;
     }
     return $count;
 }

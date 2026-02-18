@@ -599,7 +599,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateTableHeader() {
         if (!elements.logsHeader) return;
-        if (currentLogType === 'rspamd') {
+        if (currentLogType === 'rspamd' || currentLogType === 'db_rspamd') {
             logsHeader.innerHTML = `
                 <tr>
                     <th style="width: 140px;">Time</th>
@@ -1120,7 +1120,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const tr = document.createElement('tr');
             tr.className = 'log-row';
 
-            if (currentLogType === 'rspamd') {
+            if (currentLogType === 'rspamd' || currentLogType === 'db_rspamd') {
                 // RSPAMD RENDER (New JSON structure)
 
                 // Format timestamp locally
