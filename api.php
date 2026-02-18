@@ -76,6 +76,7 @@ try {
             break;
         case 'get_logs':
             requireLogin();
+            session_write_close(); // Release lock so other requests (like map/sync) don't block
             handleGetLogs();
             break;
         case 'change_password':
@@ -84,6 +85,7 @@ try {
             break;
         case 'sync_logs':
             requireLogin();
+            session_write_close(); // Release lock immediately
             handleSyncLogs();
             break;
         case 'test_db':
@@ -91,6 +93,7 @@ try {
             handleTestDb();
             break;
         case 'get_available_dates':
+            session_write_close(); // Public/Auth agnostic or read-only, safe to unlock
             handleGetAvailableDates();
             break;
         case 'get_ip_geo':
@@ -630,53 +633,21 @@ function syncRspamdFile($path, $pdo, $lazy = false)
     if (!$contentToParse)
         return 0;
 
-    // Manual Brute-Force Extraction (Safest for large logs & avoids Regex stack limits)
-    // We scan the 5MB string linearly and extract balanced {...} blocks.
+    // Optimized Regex Extraction (Fastest) with increased limits
+    // We abandoned the manual character loop because it was too slow (~43s in PHP).
+    // PCRE is C-optimized and can parse 5MB in milliseconds if we raise the limits.
 
-    $len = strlen($contentToParse);
-    $braceDepth = 0;
-    $startPos = 0; // Track start index instead of buffering
-    $inString = false;
-    $escape = false;
+    @ini_set('pcre.backtrack_limit', '10000000');
+    @ini_set('pcre.recursion_limit', '10000000');
 
-    for ($i = 0; $i < $len; $i++) {
-        $char = $contentToParse[$i];
+    // Recursive pattern matches balanced braces { ... { ... } }
+    $pattern = '/\{(?:[^{}]|(?R))*\}/';
 
-        // Handle string state to ignore braces inside strings
-        if ($inString) {
-            if ($escape) {
-                $escape = false;
-            } elseif ($char === '\\') {
-                $escape = true;
-            } elseif ($char === '"') {
-                $inString = false; // End of string
-            }
-            continue;
-        }
-
-        if ($char === '"') {
-            $inString = true;
-            continue;
-        }
-
-        if ($char === '{') {
-            if ($braceDepth === 0) {
-                $startPos = $i; // Start tracking new object
-            }
-            $braceDepth++;
-        } elseif ($char === '}') {
-            if ($braceDepth > 0) {
-                $braceDepth--;
-                if ($braceDepth === 0) {
-                    // Closed a top-level object! Extract substring efficiently
-                    // +1 because $i is current index (inclusive)
-                    $jsonStr = substr($contentToParse, $startPos, $i - $startPos + 1);
-
-                    $obj = json_decode($jsonStr, true);
-                    if ($obj && isset($obj['unix_time'])) {
-                        $data[] = $obj;
-                    }
-                }
+    if (preg_match_all($pattern, $contentToParse, $matches)) {
+        foreach ($matches[0] as $jsonStr) {
+            $obj = json_decode($jsonStr, true);
+            if ($obj && isset($obj['unix_time'])) {
+                $data[] = $obj;
             }
         }
     }
