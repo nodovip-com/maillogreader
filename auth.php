@@ -106,6 +106,11 @@ function isLoggedIn()
 
 function requireLogin()
 {
+    // Allow CLI scripts (cron jobs) to bypass login
+    if (php_sapi_name() === 'cli') {
+        return;
+    }
+
     if (!isLoggedIn()) {
         http_response_code(403);
         echo json_encode(['error' => 'Unauthorized']);
