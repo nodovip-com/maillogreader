@@ -405,7 +405,8 @@ function handleGetLogs()
     $use_db = $settings['use_db'] ?? false;
 
     if ($use_db) {
-        $pdo = getDbConnection();
+        $dbError = null;
+        $pdo = getDbConnection($settings, $dbError);
         if ($pdo) {
             $limit = isset($_GET['limit']) ? intval($_GET['limit']) : 100;
             $offset = isset($_GET['offset']) ? intval($_GET['offset']) : 0;
@@ -457,17 +458,28 @@ function handleGetLogs()
 
             echo json_encode(['logs' => $logs, 'count' => count($logs), 'type' => 'db_' . $type]);
             return;
+        } else {
+            error_log("DB Enabled but connection failed: $dbError. Falling back to files.");
+            $dbWarning = "MySQL connection failed ($dbError). Reading logs directly from files.";
         }
     }
 
     // Fallback to file reading if DB not available or disabled
+    error_log("Accessing file for logs: $path (exists: " . (file_exists($path) ? 'YES' : 'NO') . ")");
+
     if (!file_exists($path)) {
-        echo json_encode(['error' => 'Log file not found: ' . $path]);
+        $msg = "Log file not found: $path";
+        if (isset($dbWarning))
+            $msg = $dbWarning . " | " . $msg;
+        echo json_encode(['error' => $msg]);
         exit;
     }
 
     if (!is_file($path)) {
-        echo json_encode(['error' => 'Log path is not a valid file: ' . $path], JSON_PARTIAL_OUTPUT_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
+        $msg = "Log path is not a valid file: $path";
+        if (isset($dbWarning))
+            $msg = $dbWarning . " | " . $msg;
+        echo json_encode(['error' => $msg], JSON_PARTIAL_OUTPUT_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
         exit;
     }
 
