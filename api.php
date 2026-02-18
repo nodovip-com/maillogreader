@@ -550,6 +550,16 @@ function handleSyncLogs()
         return;
     }
 
+    // Prevent concurrent syncs using a lock file
+    $lockFile = __DIR__ . '/sync.lock';
+    $fp = fopen($lockFile, 'w+');
+    if (!flock($fp, LOCK_EX | LOCK_NB)) {
+        // Lock failed, another sync is running
+        fclose($fp);
+        echo json_encode(['success' => false, 'error' => 'Sync already in progress. Skipping.']);
+        return;
+    }
+
     // Default to Lazy/Smart sync to prevent timeouts (504)
     // Only do a full, deep scan if explicitly requested (e.g., via CLI or special admin action)
     $forceFull = isset($_GET['full_resync']) && $_GET['full_resync'] === '1';
@@ -586,6 +596,10 @@ function handleSyncLogs()
         }
     }
 
+    // Release lock
+    flock($fp, LOCK_UN);
+    fclose($fp);
+
     if (!function_exists('fastcgi_finish_request')) {
         echo json_encode(['success' => true, 'imported' => $totalImported]);
     }
@@ -621,7 +635,7 @@ function syncRspamdFile($path, $pdo, $lazy = false)
 
     $len = strlen($contentToParse);
     $braceDepth = 0;
-    $buffer = '';
+    $startPos = 0; // Track start index instead of buffering
     $inString = false;
     $escape = false;
 
@@ -630,7 +644,6 @@ function syncRspamdFile($path, $pdo, $lazy = false)
 
         // Handle string state to ignore braces inside strings
         if ($inString) {
-            $buffer .= $char;
             if ($escape) {
                 $escape = false;
             } elseif ($char === '\\') {
@@ -643,32 +656,28 @@ function syncRspamdFile($path, $pdo, $lazy = false)
 
         if ($char === '"') {
             $inString = true;
-            $buffer .= $char;
             continue;
         }
 
         if ($char === '{') {
             if ($braceDepth === 0) {
-                $buffer = '{'; // Start new object
-            } else {
-                $buffer .= '{';
+                $startPos = $i; // Start tracking new object
             }
             $braceDepth++;
         } elseif ($char === '}') {
             if ($braceDepth > 0) {
-                $buffer .= '}';
                 $braceDepth--;
                 if ($braceDepth === 0) {
-                    // Closed a top-level object!
-                    $obj = json_decode($buffer, true);
+                    // Closed a top-level object! Extract substring efficiently
+                    // +1 because $i is current index (inclusive)
+                    $jsonStr = substr($contentToParse, $startPos, $i - $startPos + 1);
+
+                    $obj = json_decode($jsonStr, true);
                     if ($obj && isset($obj['unix_time'])) {
                         $data[] = $obj;
                     }
-                    $buffer = ''; // Reset for next object
                 }
             }
-        } elseif ($braceDepth > 0) {
-            $buffer .= $char; // Accumulated content
         }
     }
 
