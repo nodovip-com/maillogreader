@@ -538,28 +538,37 @@ function handleSyncLogs()
         return;
     }
 
-    $isLazy = isset($_GET['lazy']) && $_GET['lazy'] === '1';
+    // Default to Lazy/Smart sync to prevent timeouts (504)
+    // Only do a full, deep scan if explicitly requested (e.g., via CLI or special admin action)
+    $forceFull = isset($_GET['full_resync']) && $_GET['full_resync'] === '1';
+    $isLazy = !$forceFull;
 
-    // Respond to client immediately if possible to avoid 504
+    // Attempt to close connection to client immediately if supported
     if (function_exists('fastcgi_finish_request')) {
+        session_write_close();
         echo json_encode(['success' => true, 'msg' => 'Sync started in background.']);
         fastcgi_finish_request();
     } else {
-        // If not using FPM, we might still block, but we'll try to be fast
+        // If we can't background it, we MUST be fast.
+        // We rely on the smart/lazy logic below to keep execution < 5s.
         if ($isLazy) {
-            echo json_encode(['success' => true, 'msg' => 'Sync started.']);
-            // We'll continue processing after echo...
+            // For manual UI clicks without fastcgi, just return success after the quick sync
+            // We don't echo here to avoid breaking JSON response if we echo again later
         }
     }
 
     $filesToProcess = [$path];
-    // Only process .1 if it's NOT a lazy sync (to keep background worker short)
-    if (!$isLazy && file_exists($path . '.1')) {
+    // CRITICAL FIX: Never process .1 (rotated) files in a web request unless explicitly forced.
+    // This was causing the 504 Gateway Timeouts by trying to parse tens of thousands of old lines.
+    if ($forceFull && file_exists($path . '.1')) {
         $filesToProcess[] = $path . '.1';
     }
 
     $totalImported = 0;
     foreach ($filesToProcess as $file) {
+        // Increase memory for this operation
+        @ini_set('memory_limit', '512M');
+
         if ($type === 'rspamd') {
             $totalImported += syncRspamdFile($file, $pdo, $isLazy);
         } else {
@@ -567,7 +576,7 @@ function handleSyncLogs()
         }
     }
 
-    if (!function_exists('fastcgi_finish_request') && !$isLazy) {
+    if (!function_exists('fastcgi_finish_request')) {
         echo json_encode(['success' => true, 'imported' => $totalImported]);
     }
 }
