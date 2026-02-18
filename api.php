@@ -560,9 +560,7 @@ function handleSyncLogs()
     $filesToProcess = [$path];
     // CRITICAL FIX: Never process .1 (rotated) files in a web request unless explicitly forced.
     // This was causing the 504 Gateway Timeouts by trying to parse tens of thousands of old lines.
-    if ($forceFull && file_exists($path . '.1')) {
-        $filesToProcess[] = $path . '.1';
-    }
+    // File .1 processing removed as per user request.
 
     $totalImported = 0;
     foreach ($filesToProcess as $file) {
@@ -586,30 +584,41 @@ function syncRspamdFile($path, $pdo, $lazy = false)
     if (!file_exists($path))
         return 0;
 
-    // For large files, we don't want to load everything if lazy
-    if ($lazy && filesize($path) > 5 * 1024 * 1024) {
-        // Read the last 1MB of the file to catch new entries
-        $handle = fopen($path, 'r');
-        fseek($handle, -1024 * 1024, SEEK_END);
-        $jsonChunk = fread($handle, 1024 * 1024);
-        fclose($handle);
+    $data = [];
 
-        // Find the first complete JSON object in the chunk
-        $startPos = strpos($jsonChunk, '{');
-        if ($startPos !== false) {
-            $jsonChunk = '[' . substr($jsonChunk, $startPos);
-            if (substr(trim($jsonChunk), -1) !== ']')
-                $jsonChunk .= ']';
-            $data = json_decode($jsonChunk, true);
-        } else {
-            return 0;
-        }
+    // Improved Logic: Use Regex to extract individual JSON objects regardless of file structure
+    // This handles both array-wrapped files "[{...},{...}]" and newline-delimited "{...}\n{...}"
+    // It also robustly handles partial reads from tail.
+
+    $contentToParse = '';
+
+    if ($lazy && filesize($path) > 5 * 1024 * 1024) {
+        $handle = fopen($path, 'r');
+        fseek($handle, -5 * 1024 * 1024, SEEK_END); // Read last 5MB
+        $contentToParse = fread($handle, 5 * 1024 * 1024);
+        fclose($handle);
     } else {
-        $json = file_get_contents($path);
-        if (!$json)
-            return 0;
-        $data = json_decode($json, true);
+        $contentToParse = file_get_contents($path);
     }
+
+    if (!$contentToParse)
+        return 0;
+
+    // Recursive pattern to match balanced braces { ... { ... } ... }
+    // This extracts valid JSON objects even if the surrounding array syntax is broken by our partial read
+    $pattern = '/\{(?:[^{}]|(?R))*\}/';
+
+    if (preg_match_all($pattern, $contentToParse, $matches)) {
+        foreach ($matches[0] as $jsonStr) {
+            $obj = json_decode($jsonStr, true);
+            if ($obj && isset($obj['unix_time'])) { // Ensure it's a valid log entry
+                $data[] = $obj;
+            }
+        }
+    }
+
+    if (empty($data))
+        return 0;
 
     if (!is_array($data))
         return 0;
