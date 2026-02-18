@@ -140,6 +140,12 @@ session_start();
             </select>
 
             <button id="refresh-btn" class="btn" style="width: auto; padding: 0.5rem 1.5rem;">Refresh</button>
+            <button id="sync-btn" class="btn btn-outline" style="margin-left:10px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"></path>
+                </svg>
+                Sync DB
+            </button>
             <button id="toggle-map-btn" class="btn btn-outline" style="margin-left:10px;">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M1 6v13l7-4 7 4 7-4V2l-7 4-7-4-7 4z"></path>

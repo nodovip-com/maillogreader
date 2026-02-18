@@ -291,6 +291,11 @@ function handleSaveSettings()
         return;
     }
 
+    if (!is_writable(SETTINGS_FILE)) {
+        echo json_encode(['success' => false, 'error' => 'Settings file is not writable. Please check permissions for: ' . SETTINGS_FILE]);
+        return;
+    }
+
     if (file_put_contents(SETTINGS_FILE, json_encode($data, JSON_PRETTY_PRINT))) {
         // If DB enabled, try to initialize it
         if ($data['use_db']) {
@@ -302,7 +307,7 @@ function handleSaveSettings()
         }
         echo json_encode(['success' => true]);
     } else {
-        echo json_encode(['success' => false, 'error' => 'Failed to write settings file']);
+        echo json_encode(['success' => false, 'error' => 'Failed to write settings file. Path might be restricted.']);
     }
 }
 

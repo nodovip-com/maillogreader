@@ -297,29 +297,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const usersModal = document.getElementById('users-modal-overlay');
     const settingsModalOverlay = document.getElementById('settings-modal-overlay'); // This was already declared as settingsModal, keeping for consistency with instruction
 
-    // Sync Button in Toolbar (Add dynamically or handle if exists)
-    const syncBtn = document.createElement('button');
-    syncBtn.id = 'sync-btn';
-    syncBtn.className = 'btn btn-outline';
-    syncBtn.style.marginLeft = '10px';
-    syncBtn.innerHTML = `
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"></path>
-        </svg>
-        Sync DB
-    `;
-    const toolbar = document.querySelector('.toolbar');
-    if (toolbar) {
-        // Assuming 'toggle-map-btn' exists or inserting at the end if not
-        const toggleMapBtn = document.getElementById('toggle-map-btn');
-        if (toggleMapBtn) {
-            toolbar.insertBefore(syncBtn, toggleMapBtn);
-        } else {
-            toolbar.appendChild(syncBtn);
-        }
+    const syncBtn = document.getElementById('sync-btn');
+    if (syncBtn) {
+        syncBtn.addEventListener('click', handleSync);
     }
-
-    syncBtn.addEventListener('click', handleSync);
 
     const addUserForm = document.getElementById('add-user-form');
     const usersList = document.getElementById('users-list');
