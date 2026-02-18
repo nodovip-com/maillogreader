@@ -82,6 +82,14 @@ try {
             requireLogin();
             handleChangePassword();
             break;
+        case 'sync_logs':
+            requireLogin();
+            handleSyncLogs();
+            break;
+        case 'test_db':
+            requireLogin();
+            handleTestDb();
+            break;
         case 'get_available_dates':
             handleGetAvailableDates();
             break;
@@ -102,6 +110,60 @@ try {
         'success' => false,
         'error' => 'Caught Exception: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine()
     ], JSON_PARTIAL_OUTPUT_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
+}
+
+/**
+ * Get MySQL connection, creating DB and tables if they don't exist.
+ */
+function getDbConnection($settings = null)
+{
+    if ($settings === null) {
+        $settings = getSettings();
+    }
+
+    $db_host = $settings['db_host'] ?? '';
+    $db_name = $settings['db_name'] ?? '';
+    $db_user = $settings['db_user'] ?? '';
+    $db_pass = $settings['db_pass'] ?? '';
+
+    if (!$db_host || !$db_name || !$db_user) {
+        return null;
+    }
+
+    try {
+        // First try to connect to the server (without DB name) to check/create DB
+        $dsn_no_db = "mysql:host=$db_host;charset=utf8mb4";
+        $pdo = new PDO($dsn_no_db, $db_user, $db_pass, [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+        ]);
+
+        // Create database if not exists
+        $pdo->exec("CREATE DATABASE IF NOT EXISTS `$db_name` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+
+        // Connect to the actual database
+        $pdo = null;
+        $dsn = "mysql:host=$db_host;dbname=$db_name;charset=utf8mb4";
+        $pdo = new PDO($dsn, $db_user, $db_pass, [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+        ]);
+
+        // Create table if not exists using schema.sql content
+        $tableExists = $pdo->query("SHOW TABLES LIKE 'mail_logs'")->rowCount() > 0;
+        if (!$tableExists) {
+            $schemaFile = __DIR__ . '/schema.sql';
+            if (file_exists($schemaFile)) {
+                $sql = file_get_contents($schemaFile);
+                $pdo->exec($sql);
+            }
+        }
+
+        return $pdo;
+    } catch (PDOException $e) {
+        error_log("Database Connection Error: " . $e->getMessage());
+        return null;
+    }
 }
 
 
@@ -193,7 +255,12 @@ function getSettings()
 {
     $defaults = [
         'log_type' => 'syslog',
-        'log_path' => defined('LOG_FILE_PATH') ? LOG_FILE_PATH : 'dummy_mail.log'
+        'log_path' => defined('LOG_FILE_PATH') ? LOG_FILE_PATH : 'dummy_mail.log',
+        'db_host' => '',
+        'db_name' => '',
+        'db_user' => '',
+        'db_pass' => '',
+        'use_db' => false
     ];
 
     if (file_exists(SETTINGS_FILE)) {
@@ -208,18 +275,31 @@ function getSettings()
 function handleSaveSettings()
 {
     $input = json_decode(file_get_contents('php://input'), true);
-    if (!isset($input['log_type']) || !isset($input['log_path'])) {
-        echo json_encode(['success' => false, 'error' => 'Missing fields']);
-        return;
+    // Support new fields including DB
+    $fields = ['log_type', 'log_path', 'db_host', 'db_name', 'db_user', 'db_pass', 'use_db'];
+    $data = getSettings();
+
+    foreach ($fields as $field) {
+        if (isset($input[$field])) {
+            $data[$field] = $input[$field];
+        }
     }
 
     // Basic validation
-    if (!in_array($input['log_type'], ['syslog', 'rspamd'])) {
+    if (!in_array($data['log_type'], ['syslog', 'rspamd'])) {
         echo json_encode(['success' => false, 'error' => 'Invalid log type']);
         return;
     }
 
-    if (file_put_contents(SETTINGS_FILE, json_encode($input, JSON_PRETTY_PRINT))) {
+    if (file_put_contents(SETTINGS_FILE, json_encode($data, JSON_PRETTY_PRINT))) {
+        // If DB enabled, try to initialize it
+        if ($data['use_db']) {
+            $pdo = getDbConnection($data);
+            if (!$pdo) {
+                echo json_encode(['success' => true, 'warning' => 'Settings saved but could not connect to MySQL. Please check credentials.']);
+                return;
+            }
+        }
         echo json_encode(['success' => true]);
     } else {
         echo json_encode(['success' => false, 'error' => 'Failed to write settings file']);
@@ -314,7 +394,65 @@ function handleGetLogs()
     $settings = getSettings();
     $path = $settings['log_path'];
     $type = $settings['log_type'];
+    $use_db = $settings['use_db'] ?? false;
 
+    if ($use_db) {
+        $pdo = getDbConnection();
+        if ($pdo) {
+            $limit = isset($_GET['limit']) ? intval($_GET['limit']) : 100;
+            $offset = isset($_GET['offset']) ? intval($_GET['offset']) : 0;
+            $search = isset($_GET['search']) ? $_GET['search'] : '';
+            $status = isset($_GET['status']) ? $_GET['status'] : '';
+            $date = isset($_GET['date']) ? $_GET['date'] : '';
+
+            $where = ["1=1"];
+            $params = [];
+
+            if ($search) {
+                $where[] = "(message LIKE ? OR sender LIKE ? OR recipient LIKE ? OR host LIKE ? OR queue_id LIKE ?)";
+                $searchParam = "%$search%";
+                array_push($params, $searchParam, $searchParam, $searchParam, $searchParam, $searchParam);
+            }
+
+            if ($status) {
+                if ($status === 'sent') {
+                    $where[] = "status = 'success'";
+                } else {
+                    $where[] = "status = ?";
+                    $params[] = $status;
+                }
+            }
+
+            if ($date) {
+                $where[] = "DATE(timestamp) = ?";
+                $params[] = $date;
+            }
+
+            $whereStr = implode(" AND ", $where);
+            $sql = "SELECT * FROM mail_logs WHERE $whereStr ORDER BY timestamp DESC LIMIT $limit OFFSET $offset";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            $logs = $stmt->fetchAll();
+
+            // Format for frontend
+            foreach ($logs as &$log) {
+                if ($type === 'rspamd') {
+                    // Try to decode symbols if it's a string from DB (depending on MySQL version/settings)
+                    if (is_string($log['symbols'])) {
+                        $log['symbols'] = json_decode($log['symbols'], true) ?? [];
+                    }
+                }
+                // Ensure unix_time is int
+                $log['unix_time'] = (int) $log['unix_time'];
+                $log['timestamp'] = date('d-M-Y H:i:s', $log['unix_time']);
+            }
+
+            echo json_encode(['logs' => $logs, 'count' => count($logs), 'type' => 'db_' . $type]);
+            return;
+        }
+    }
+
+    // Fallback to file reading if DB not available or disabled
     if (!file_exists($path)) {
         echo json_encode(['error' => 'Log file not found: ' . $path]);
         exit;
@@ -330,6 +468,128 @@ function handleGetLogs()
     } else {
         processSyslogLogs($path);
     }
+}
+
+function handleTestDb()
+{
+    $pdo = getDbConnection();
+    if ($pdo) {
+        echo json_encode(['success' => true, 'msg' => 'Connected successfully and database is ready.']);
+    } else {
+        echo json_encode(['success' => false, 'error' => 'Could not connect to database. Check credentials.']);
+    }
+}
+
+function handleSyncLogs()
+{
+    $settings = getSettings();
+    $path = $settings['log_path'];
+    $type = $settings['log_type'];
+    $pdo = getDbConnection();
+
+    if (!$pdo) {
+        echo json_encode(['success' => false, 'error' => 'Database connection required for sync.']);
+        return;
+    }
+
+    $filesToProcess = [$path];
+    if (file_exists($path . '.1')) {
+        $filesToProcess[] = $path . '.1';
+    }
+
+    $totalImported = 0;
+
+    foreach ($filesToProcess as $file) {
+        if ($type === 'rspamd') {
+            $totalImported += syncRspamdFile($file, $pdo);
+        } else {
+            $totalImported += syncSyslogFile($file, $pdo);
+        }
+    }
+
+    echo json_encode(['success' => true, 'imported' => $totalImported]);
+}
+
+function syncRspamdFile($path, $pdo)
+{
+    $json = file_get_contents($path);
+    if (!$json)
+        return 0;
+    $data = json_decode($json, true);
+    if (!is_array($data))
+        return 0;
+
+    $stmt = $pdo->prepare("INSERT IGNORE INTO mail_logs (
+        log_hash, timestamp, unix_time, host, component, message, status, action, 
+        score, symbols, queue_id, sender, recipient, size, user, scan_time
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+
+    $count = 0;
+    foreach ($data as $entry) {
+        $parsed = parseRspamdEntry($entry);
+        $logHash = $entry['message-id'] ?? md5(json_encode($entry));
+
+        $stmt->execute([
+            $logHash,
+            date('Y-m-d H:i:s', $parsed['unix_time']),
+            $parsed['unix_time'],
+            $parsed['host'],
+            $parsed['component'],
+            $parsed['message'],
+            $parsed['status'],
+            $parsed['action'],
+            $parsed['score'],
+            json_encode($parsed['symbols']),
+            $parsed['queue_id'],
+            $parsed['sender'],
+            $parsed['recipient'],
+            $parsed['size'],
+            $parsed['user'],
+            $parsed['scan_time']
+        ]);
+        if ($stmt->rowCount() > 0)
+            $count++;
+    }
+    return $count;
+}
+
+function syncSyslogFile($path, $pdo)
+{
+    $handle = fopen($path, 'r');
+    if (!$handle)
+        return 0;
+
+    $stmt = $pdo->prepare("INSERT IGNORE INTO mail_logs (
+        log_hash, timestamp, unix_time, host, component, message, status, 
+        queue_id, sender, recipient
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+
+    $count = 0;
+    while (($line = fgets($handle)) !== false) {
+        $line = trim($line);
+        if (empty($line))
+            continue;
+
+        $parsed = parseLogLine($line);
+        $logHash = hash('sha256', $line);
+
+        $stmt->execute([
+            $logHash,
+            date('Y-m-d H:i:s', $parsed['unix_time']),
+            $parsed['unix_time'],
+            $parsed['host'],
+            $parsed['component'],
+            $parsed['message'],
+            $parsed['status'],
+            $parsed['queue_id'],
+            $parsed['sender'],
+            $parsed['recipient']
+        ]);
+        if ($stmt->rowCount() > 0)
+            $count++;
+    }
+    fclose($handle);
+    return $count;
 }
 
 function processRspamdLogs($path)

@@ -250,6 +250,40 @@ session_start();
                             <input type="text" id="setting-log-path" required placeholder="/var/log/mail.log">
                             <small style="color:var(--text-secondary)">Absolute or relative path.</small>
                         </div>
+
+                        <hr style="border:0; border-top:1px solid var(--border-color); margin: 1.5rem 0;">
+
+                        <div class="input-group" style="flex-direction: row; align-items: center; gap: 10px;">
+                            <input type="checkbox" id="setting-use-db" style="width: auto;">
+                            <label for="setting-use-db" style="margin-bottom: 0;">Use MySQL for persistence</label>
+                        </div>
+
+                        <div id="db-settings-fields">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                <div class="input-group">
+                                    <label>DB Host</label>
+                                    <input type="text" id="setting-db-host" placeholder="localhost">
+                                </div>
+                                <div class="input-group">
+                                    <label>DB Name</label>
+                                    <input type="text" id="setting-db-name" placeholder="maillogs">
+                                </div>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                <div class="input-group">
+                                    <label>DB User</label>
+                                    <input type="text" id="setting-db-user" placeholder="root">
+                                </div>
+                                <div class="input-group">
+                                    <label>DB Password</label>
+                                    <input type="password" id="setting-db-pass" placeholder="••••••">
+                                </div>
+                            </div>
+                            <button type="button" id="test-db-btn" class="btn btn-outline"
+                                style="font-size: 0.8rem; padding: 0.4rem 1rem; width: auto; margin-bottom: 1rem;">Test
+                                Connection</button>
+                        </div>
+
                         <p id="settings-msg" style="margin-bottom:1rem; font-size:0.9rem;"></p>
                         <div style="display:flex; justify-content:flex-end; gap:1rem;">
                             <button type="button" id="settings-cancel" class="btn"

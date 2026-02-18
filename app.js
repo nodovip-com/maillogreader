@@ -138,21 +138,69 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Settings Modal Logic ---
     function openSettingsModal() {
         if (!settingsModal) return;
-        userDropdown.classList.remove('show');
-        settingsModal.classList.add('show');
+        if (userDropdown) userDropdown.classList.remove('show');
+        if (settingsModal) settingsModal.classList.add('show');
         loadSettings();
     }
-    function closeSettingsModal() { if (settingsModal) settingsModal.classList.remove('show'); }
+    function closeSettingsModal() {
+        if (settingsModal) settingsModal.classList.remove('show');
+    }
+
+    // Toggle DB fields based on checkbox
+    const useDbCheckbox = document.getElementById('setting-use-db');
+    const dbFieldsContainer = document.getElementById('db-settings-fields');
+    if (useDbCheckbox && dbFieldsContainer) {
+        useDbCheckbox.addEventListener('change', () => {
+            dbFieldsContainer.style.display = useDbCheckbox.checked ? 'block' : 'none';
+        });
+    }
 
     if (settingsBtn) settingsBtn.addEventListener('click', (e) => { e.stopPropagation(); openSettingsModal(); });
     if (settingsClose) settingsClose.addEventListener('click', closeSettingsModal);
     if (settingsCancel) settingsCancel.addEventListener('click', closeSettingsModal);
 
     async function loadSettings() {
-        const data = await safeFetch('api.php?action=get_settings');
+        const res = await fetch('api.php?action=get_settings');
+        const data = await res.json();
         if (data) {
-            document.getElementById('setting-log-type').value = data.log_type || 'syslog';
-            document.getElementById('setting-log-path').value = data.log_path || '';
+            document.getElementById('setting-log-type').value = data.log_type;
+            document.getElementById('setting-log-path').value = data.log_path;
+
+            const dbHost = document.getElementById('setting-db-host');
+            if (dbHost) {
+                dbHost.value = data.db_host || '';
+                document.getElementById('setting-db-name').value = data.db_name || '';
+                document.getElementById('setting-db-user').value = data.db_user || '';
+                document.getElementById('setting-db-pass').value = data.db_pass || '';
+                const useDb = document.getElementById('setting-use-db');
+                useDb.checked = data.use_db || false;
+                if (dbFieldsContainer) {
+                    dbFieldsContainer.style.display = useDb.checked ? 'block' : 'none';
+                }
+            }
+        }
+    }
+
+    async function handleSync() {
+        const syncBtn = document.getElementById('sync-btn');
+        if (!syncBtn) return;
+        syncBtn.disabled = true;
+        const originalContent = syncBtn.innerHTML;
+        syncBtn.textContent = 'Syncing...';
+        try {
+            const res = await fetch('api.php?action=sync_logs');
+            const data = await res.json();
+            if (data.success) {
+                alert(`Sync complete! Imported ${data.imported} new logs.`);
+                fetchLogs(true);
+            } else {
+                alert('Sync failed: ' + (data.error || 'Unknown error'));
+            }
+        } catch (e) {
+            alert('Sync error: ' + e.message);
+        } finally {
+            syncBtn.disabled = false;
+            syncBtn.innerHTML = originalContent;
         }
     }
 
@@ -161,35 +209,118 @@ document.addEventListener('DOMContentLoaded', () => {
             e.preventDefault();
             const msg = document.getElementById('settings-msg');
             msg.textContent = 'Saving...';
+            msg.style.color = 'var(--text-secondary)';
 
             const payload = {
                 log_type: document.getElementById('setting-log-type').value,
-                log_path: document.getElementById('setting-log-path').value
+                log_path: document.getElementById('setting-log-path').value,
+                db_host: document.getElementById('setting-db-host')?.value || '',
+                db_name: document.getElementById('setting-db-name')?.value || '',
+                db_user: document.getElementById('setting-db-user')?.value || '',
+                db_pass: document.getElementById('setting-db-pass')?.value || '',
+                use_db: document.getElementById('setting-use-db')?.checked || false
             };
 
             try {
                 const res = await fetch('api.php?action=save_settings', {
-                    method: 'POST', body: JSON.stringify(payload)
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
                 });
                 const data = await res.json();
                 if (data.success) {
-                    msg.textContent = 'Saved! Reloading...'; msg.style.color = 'var(--success-color)';
-                    setTimeout(() => {
-                        closeSettingsModal();
-                        currentOffset = 0;
-                        fetchLogs(true); // Refetch with new settings
-                    }, 1000);
+                    msg.style.color = 'var(--success-color)';
+                    msg.textContent = data.warning ? data.warning : 'Settings saved successfully';
+                    if (!data.warning) {
+                        setTimeout(() => {
+                            if (settingsModal) settingsModal.classList.remove('show');
+                            currentOffset = 0;
+                            fetchLogs(true);
+                        }, 1500);
+                    }
                 } else {
-                    msg.textContent = data.error || 'Failed'; msg.style.color = 'var(--error-color)';
+                    msg.style.color = 'var(--error-color)';
+                    msg.textContent = data.error;
                 }
-            } catch (e) { msg.textContent = 'Error'; }
+            } catch (e) {
+                msg.textContent = 'Error: ' + e.message;
+                msg.style.color = 'var(--error-color)';
+            }
+        });
+    }
+
+    const testDbBtn = document.getElementById('test-db-btn');
+    if (testDbBtn) {
+        testDbBtn.addEventListener('click', async () => {
+            const msg = document.getElementById('settings-msg');
+            testDbBtn.disabled = true;
+            testDbBtn.textContent = 'Testing...';
+
+            const payload = {
+                log_type: document.getElementById('setting-log-type').value,
+                log_path: document.getElementById('setting-log-path').value,
+                db_host: document.getElementById('setting-db-host')?.value || '',
+                db_name: document.getElementById('setting-db-name')?.value || '',
+                db_user: document.getElementById('setting-db-user')?.value || '',
+                db_pass: document.getElementById('setting-db-pass')?.value || '',
+                use_db: true
+            };
+
+            try {
+                await fetch('api.php?action=save_settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const res = await fetch('api.php?action=test_db');
+                const data = await res.json();
+                if (data.success) {
+                    msg.style.color = 'var(--success-color)';
+                    msg.textContent = data.msg;
+                } else {
+                    msg.style.color = 'var(--error-color)';
+                    msg.textContent = data.error;
+                }
+            } catch (e) {
+                msg.style.color = 'var(--error-color)';
+                msg.textContent = 'Connection test failed: ' + e.message;
+            } finally {
+                testDbBtn.disabled = false;
+                testDbBtn.textContent = 'Test Connection';
+            }
         });
     }
 
     // --- Users Modal Logic ---
     const usersBtn = document.getElementById('users-btn');
     const usersModal = document.getElementById('users-modal-overlay');
-    const usersClose = document.getElementById('users-close');
+    const settingsModalOverlay = document.getElementById('settings-modal-overlay'); // This was already declared as settingsModal, keeping for consistency with instruction
+
+    // Sync Button in Toolbar (Add dynamically or handle if exists)
+    const syncBtn = document.createElement('button');
+    syncBtn.id = 'sync-btn';
+    syncBtn.className = 'btn btn-outline';
+    syncBtn.style.marginLeft = '10px';
+    syncBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"></path>
+        </svg>
+        Sync DB
+    `;
+    const toolbar = document.querySelector('.toolbar');
+    if (toolbar) {
+        // Assuming 'toggle-map-btn' exists or inserting at the end if not
+        const toggleMapBtn = document.getElementById('toggle-map-btn');
+        if (toggleMapBtn) {
+            toolbar.insertBefore(syncBtn, toggleMapBtn);
+        } else {
+            toolbar.appendChild(syncBtn);
+        }
+    }
+
+    syncBtn.addEventListener('click', handleSync);
+
     const addUserForm = document.getElementById('add-user-form');
     const usersList = document.getElementById('users-list');
 
