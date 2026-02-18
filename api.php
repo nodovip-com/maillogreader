@@ -603,36 +603,47 @@ function syncSyslogFile($path, $pdo)
 
 function processRspamdLogs($path)
 {
-    // Rspamd logs can be large. 26MB JSON can consume 200MB+ RAM.
-    $fsize = filesize($path);
-
-    // Attempt to set memory limit even higher if possible
     @ini_set('memory_limit', '1024M');
-
-    if ($fsize > 30 * 1024 * 1024) {
-        // If file is very large, reading the whole thing is dangerous.
-        // For now, we try since we have 1GB limit attempt.
+    $files = [$path];
+    if (file_exists($path . '.1')) {
+        $files[] = $path . '.1';
     }
 
-    $json = file_get_contents($path);
-    if ($json === false) {
-        echo json_encode(['error' => 'Could not read log file: ' . $path]);
+    $allData = [];
+    $errors = [];
+    foreach ($files as $file) {
+        if (!file_exists($file))
+            continue;
+        if (!is_readable($file)) {
+            $errors[] = "Permission denied: $file";
+            continue;
+        }
+        $json = file_get_contents($file);
+        if ($json === false) {
+            $errors[] = "Failed to read: $file";
+            continue;
+        }
+        $decoded = json_decode($json, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            $errors[] = "JSON Parse Error ($file): " . json_last_error_msg();
+            continue;
+        }
+        if (is_array($decoded)) {
+            $allData = array_merge($allData, $decoded);
+        }
+    }
+
+    if (empty($allData)) {
+        $msg = !empty($errors) ? implode(" | ", $errors) : "No log entries found in files.";
+        echo json_encode(['logs' => [], 'count' => 0, 'type' => 'rspamd', 'warning' => $msg]);
         return;
     }
 
-    $data = json_decode($json, true);
-    if (json_last_error() !== JSON_ERROR_NONE) {
-        echo json_encode(['error' => 'JSON Parse Error: ' . json_last_error_msg() . '. File size: ' . $fsize . ' bytes.']);
-        return;
-    }
+    // Sort all records by unix_time DESC (newest first)
+    usort($allData, function ($a, $b) {
+        return ($b['unix_time'] ?? 0) <=> ($a['unix_time'] ?? 0);
+    });
 
-    if (!is_array($data)) {
-        echo json_encode(['error' => 'Invalid JSON in log file (not an array)']);
-        return;
-    }
-
-    // Process in reverse without array_reverse() to save a bit of peak memory
-    $totalLogs = count($data);
     $parsedLogs = [];
     $limit = isset($_GET['limit']) ? intval($_GET['limit']) : 100;
     $offset = isset($_GET['offset']) ? intval($_GET['offset']) : 0;
@@ -643,10 +654,8 @@ function processRspamdLogs($path)
     $count = 0;
     $totalProcessed = 0;
 
-    // Start from the end
-    for ($i = $totalLogs - 1; $i >= 0; $i--) {
-        $entry = $data[$i];
-        // Date Filter (Optimized check before parsing completely if possible, but parsing needed for time)
+    foreach ($allData as $entry) {
+        // Date Filter
         if ($filterDate && isset($entry['unix_time'])) {
             $entryDate = date('Y-m-d', $entry['unix_time']);
             if ($entryDate !== $filterDate)
@@ -664,12 +673,7 @@ function processRspamdLogs($path)
 
         // Status Filter
         if ($filterStatus) {
-            // Parsed['status'] is already normalized in parseRspamdEntry:
-            // 'success' (no action), 'error' (reject), 'deferred' (soft reject), 'info' (others)
-
             $entryStatus = $parsed['status'];
-
-            // Direct comparison for common filters
             if ($filterStatus === 'sent' && $entryStatus === 'success') {
                 // Keep
             } elseif ($filterStatus === 'error' && $entryStatus === 'error') {
@@ -677,20 +681,10 @@ function processRspamdLogs($path)
             } elseif ($filterStatus === 'deferred' && $entryStatus === 'deferred') {
                 // Keep
             } elseif ($filterStatus === 'info' || $filterStatus === '' || $filterStatus === 'unknown') {
-                // info shows everything or specifics? 
-                // IF user purposely chose "warning" or "bounced" (which dont map well to Rspamd), we might filter them out or show none.
-                // Let's allow loose matching if it's not one of the strict ones above.
-                if ($filterStatus === 'info') {
-                    // Show all is usually empty string filter, but if specific 'info' selected, technically all are info?
-                    // Or just keep logic simple:
-                }
+                // Keep
             } else {
-                // If filter is specific (e.g. 'bounced') but entry is 'success', skip.
-                // We don't have 'bounced' in Rspamd usually.
-                // If filter doesn't match entry's status, skip.
-                if ($filterStatus !== $entryStatus) {
+                if ($filterStatus !== $entryStatus)
                     continue;
-                }
             }
         }
 
@@ -747,11 +741,9 @@ function parseRspamdEntry($entry)
 
 function processSyslogLogs($path)
 {
-    // Optimized syslog reading: Read backwards from end of file
-    $handle = fopen($path, 'r');
-    if (!$handle) {
-        echo json_encode(['logs' => [], 'count' => 0]);
-        return;
+    $files = [$path];
+    if (file_exists($path . '.1')) {
+        $files[] = $path . '.1';
     }
 
     $parsedLogs = [];
@@ -764,75 +756,84 @@ function processSyslogLogs($path)
     $count = 0;
     $totalProcessed = 0;
 
-    fseek($handle, 0, SEEK_END);
-    $pos = ftell($handle);
-    $buffer = "";
-    $chunkSize = 8192;
+    $allFilesFailed = true;
+    $errors = [];
 
-    while ($pos > 0 && $count < $limit) {
-        $readSize = min($pos, $chunkSize);
-        $pos -= $readSize;
-        fseek($handle, $pos);
-        $chunk = fread($handle, $readSize);
-        $buffer = $chunk . $buffer;
+    foreach ($files as $file) {
+        if (!file_exists($file))
+            continue;
+        if (!is_readable($file)) {
+            $errors[] = "Permission denied: $file";
+            continue;
+        }
+        $handle = fopen($file, 'r');
+        if (!$handle) {
+            $errors[] = "Could not open handle: $file";
+            continue;
+        }
 
-        $lines = explode("\n", $buffer);
-        // The first element might be a partial line, keep it for the next iteration
-        $buffer = array_shift($lines);
+        $allFilesFailed = false;
+        fseek($handle, 0, SEEK_END);
+        $pos = ftell($handle);
+        $buffer = "";
+        $chunkSize = 8192;
 
-        // Process lines in reverse order
-        for ($i = count($lines) - 1; $i >= 0; $i--) {
-            $line = trim($lines[$i]);
-            if (empty($line))
-                continue;
+        while ($pos > 0 && $count < $limit) {
+            $readSize = min($pos, $chunkSize);
+            $pos -= $readSize;
+            fseek($handle, $pos);
+            $chunk = fread($handle, $readSize);
+            $buffer = $chunk . $buffer;
 
-            $parsed = parseLogLine($line);
-            if (!$parsed)
-                continue;
+            $lines = explode("\n", $buffer);
+            $buffer = array_shift($lines);
 
-            // Date Filter
-            if ($filterDate) {
-                $ts = strtotime($parsed['timestamp']);
-                if ($ts) {
-                    $entryDate = date('Y-m-d', $ts);
-                    if ($entryDate !== $filterDate)
+            for ($i = count($lines) - 1; $i >= 0; $i--) {
+                $line = trim($lines[$i]);
+                if (empty($line))
+                    continue;
+
+                $parsed = parseLogLine($line);
+                if (!$parsed)
+                    continue;
+
+                if ($filterDate) {
+                    $ts = strtotime($parsed['timestamp']);
+                    if (!$ts || date('Y-m-d', $ts) !== $filterDate)
+                        continue;
+                }
+
+                if ($search) {
+                    if (strpos(strtolower($line), $search) === false)
+                        continue;
+                }
+
+                if ($filterStatus) {
+                    if ($parsed['status'] !== $filterStatus)
                         continue;
                 } else {
-                    continue;
+                    if (!$search && ($parsed['status'] === 'info' || $parsed['status'] === 'unknown'))
+                        continue;
                 }
-            }
 
-            // Search Filter
-            if ($search) {
-                $searchable = strtolower($line); // Search raw line for performance
-                if (strpos($searchable, $search) === false)
-                    continue;
-            }
-
-            // Status Filter
-            if ($filterStatus) {
-                if ($parsed['status'] !== $filterStatus)
-                    continue;
-            } else {
-                // If no search, hide 'info' and 'unknown' logs
-                if (!$search && ($parsed['status'] === 'info' || $parsed['status'] === 'unknown')) {
-                    continue;
+                if ($totalProcessed >= $offset) {
+                    $parsedLogs[] = $parsed;
+                    $count++;
                 }
-            }
+                $totalProcessed++;
 
-            if ($totalProcessed >= $offset) {
-                $parsedLogs[] = $parsed;
-                $count++;
+                if ($count >= $limit)
+                    break 2;
             }
-            $totalProcessed++;
-
-            if ($count >= $limit)
-                break 2;
         }
+        fclose($handle);
     }
-    fclose($handle);
 
-    echo json_encode(['logs' => $parsedLogs, 'count' => count($parsedLogs), 'type' => 'syslog'], JSON_PARTIAL_OUTPUT_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
+    $response = ['logs' => $parsedLogs, 'count' => count($parsedLogs), 'type' => 'syslog'];
+    if ($allFilesFailed && !empty($errors)) {
+        $response['warning'] = implode(" | ", $errors);
+    }
+    echo json_encode($response, JSON_PARTIAL_OUTPUT_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE);
 }
 
 function parseLogLine($line)
