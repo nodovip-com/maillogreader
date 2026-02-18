@@ -1,11 +1,11 @@
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('Mail Log Reader Pro - UI Version 1.0.4 Loaded');
+    console.log('Mail Log Reader Pro - UI Version 1.0.8 Loaded');
 
     // Global Error Handler for Debugging
     window.onerror = function (msg, url, line, col, error) {
-        const errorMsg = `JS Error: ${msg}\nLine: ${line}\nURL: ${url}`;
+        const errorMsg = `UI Error: ${msg} (Line: ${line})`;
         console.error(errorMsg, error);
-        alert(errorMsg);
+        showError(errorMsg);
         return false;
     };
 
@@ -600,7 +600,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateTableHeader() {
         if (!elements.logsHeader) return;
         if (currentLogType === 'rspamd' || currentLogType === 'db_rspamd') {
-            logsHeader.innerHTML = `
+            elements.logsHeader.innerHTML = `
                 <tr>
                     <th style="width: 140px;">Time</th>
                     <th style="width: 100px;">Score</th>
@@ -610,7 +610,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </tr>
             `;
         } else {
-            logsHeader.innerHTML = `
+            elements.logsHeader.innerHTML = `
                 <tr>
                     <th style="width: 150px;">Timestamp</th>
                     <th style="width: 100px;">Status</th>
@@ -834,10 +834,10 @@ document.addEventListener('DOMContentLoaded', () => {
         isFetching = true;
 
         if (reset && !isBackground) {
-            logsBody.innerHTML = '';
+            if (elements.logsBody) elements.logsBody.innerHTML = '';
             currentOffset = 0;
             allLogsLoaded = false;
-            loader.classList.remove('hidden');
+            if (elements.loader) elements.loader.classList.remove('hidden');
             if (elements.backendError) elements.backendError.classList.add('hidden'); // Reset error
             await loadSettingsToState();
         }
@@ -856,7 +856,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = await safeFetch(`api.php?${params.toString()}`);
         if (!data) {
             isFetching = false;
-            if (!isBackground) loader.classList.add('hidden');
+            if (!isBackground && elements.loader) elements.loader.classList.add('hidden');
             return;
         }
 
@@ -1112,7 +1112,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isMapView) updateMap(logs);
 
         if (logs.length === 0 && isReset) {
-            logsBody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem; color: var(--text-secondary);">No logs found</td></tr>';
+            if (elements.logsBody) elements.logsBody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem; color: var(--text-secondary);">No logs found</td></tr>';
             return;
         }
 
