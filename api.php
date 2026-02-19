@@ -704,7 +704,21 @@ function syncRspamdFile($path, $pdo, $lazy = false)
 
     // Debug logging
     $debugLog = __DIR__ . '/sync_debug.txt';
-    $logMsg = date('Y-m-d H:i:s') . " - Parsed " . count($data) . " items from " . count($chunks) . " chunks.\n";
+    $countItems = count($data);
+
+    // Find min/max timestamp in the data to see what we actually parsed
+    $minTime = PHP_INT_MAX;
+    $maxTime = 0;
+    foreach ($data as $d) {
+        if (isset($d['unix_time'])) {
+            if ($d['unix_time'] < $minTime)
+                $minTime = $d['unix_time'];
+            if ($d['unix_time'] > $maxTime)
+                $maxTime = $d['unix_time'];
+        }
+    }
+
+    $logMsg = date('Y-m-d H:i:s') . " - Parsed $countItems items. Oldest: " . date('Y-m-d H:i:s', $minTime) . " Newest: " . date('Y-m-d H:i:s', $maxTime) . ".\n";
     file_put_contents($debugLog, $logMsg, FILE_APPEND);
 
     $stmt = $pdo->prepare("INSERT IGNORE INTO mail_logs (
