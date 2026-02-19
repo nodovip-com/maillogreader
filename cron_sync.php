@@ -16,6 +16,9 @@ $_GET['action'] = ''; // Prevent api.php from executing a switch case
 require_once 'api.php';
 ob_end_clean();
 
+$debugLog = __DIR__ . '/sync_debug.txt';
+file_put_contents($debugLog, date('Y-m-d H:i:s') . " - CRON: Script initiated via CLI.\n", FILE_APPEND);
+
 echo "[" . date('Y-m-d H:i:s') . "] Starting Log Sync...\n";
 
 // Capture the output of the sync function
