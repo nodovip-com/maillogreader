@@ -569,7 +569,7 @@ function handleSyncLogs()
     if (!flock($fp, LOCK_EX | LOCK_NB)) {
         // Lock failed, another sync is running
         fclose($fp);
-        file_put_contents($debugLog, date('Y-m-d H:i:s') . " - SKIP: Sync locked (already running).\n", FILE_APPEND);
+        // file_put_contents($debugLog, date('Y-m-d H:i:s') . " - SKIP: Sync locked (already running).\n", FILE_APPEND);
         echo json_encode(['success' => false, 'error' => 'Sync already in progress. Skipping.']);
         return;
     }
@@ -583,7 +583,7 @@ function handleSyncLogs()
     });
 
     // Log successful start
-    file_put_contents($debugLog, date('Y-m-d H:i:s') . " - START: Lock acquired. Memory: " . memory_get_usage() . "\n", FILE_APPEND);
+    // file_put_contents($debugLog, date('Y-m-d H:i:s') . " - START: Lock acquired. Memory: " . memory_get_usage() . "\n", FILE_APPEND);
 
     // Default to Lazy/Smart sync to prevent timeouts (504)
     // Only do a full, deep scan if explicitly requested (e.g., via CLI or special admin action)
@@ -731,8 +731,8 @@ function syncRspamdFile($path, $pdo, $lazy = false)
     // Debug logging
     // $debugLog is defined in handleSyncLogs but strictly we should pass it or redefine it if this function is called alone
     // For now we redefine it to be safe
-    $debugLog = __DIR__ . '/sync_debug.txt';
-    file_put_contents($debugLog, date('Y-m-d H:i:s') . " - TRACE: Querying MAX(unix_time)...\n", FILE_APPEND);
+    // $debugLog = __DIR__ . '/sync_debug.txt';
+    // file_put_contents($debugLog, date('Y-m-d H:i:s') . " - TRACE: Querying MAX(unix_time)...\n", FILE_APPEND);
 
     try {
         $stmtMax = $pdo->query("SELECT MAX(unix_time) FROM mail_logs");
@@ -741,7 +741,7 @@ function syncRspamdFile($path, $pdo, $lazy = false)
             $latestTime = 0;
     } catch (Exception $e) {
         $latestTime = 0;
-        file_put_contents($debugLog, date('Y-m-d H:i:s') . " - ERROR: DB Max Time Query failed: " . $e->getMessage() . "\n", FILE_APPEND);
+        // file_put_contents($debugLog, date('Y-m-d H:i:s') . " - ERROR: DB Max Time Query failed: " . $e->getMessage() . "\n", FILE_APPEND);
     }
 
     $countItems = count($data);
@@ -754,12 +754,12 @@ function syncRspamdFile($path, $pdo, $lazy = false)
         }
     }
 
-    $countItemsFiltered = count($newItems);
-    $logMsg = date('Y-m-d H:i:s') . " - Read $countItems items. Filtered down to $countItemsFiltered new items (>= $latestTime).\n";
-    file_put_contents($debugLog, $logMsg, FILE_APPEND);
+    // $countItemsFiltered = count($newItems);
+    // $logMsg = date('Y-m-d H:i:s') . " - Read $countItems items. Filtered down to $countItemsFiltered new items (>= $latestTime).\n";
+    // file_put_contents($debugLog, $logMsg, FILE_APPEND);
 
     if (empty($newItems)) {
-        file_put_contents($debugLog, date('Y-m-d H:i:s') . " - SUCCESS: No new items to insert. Done.\n", FILE_APPEND);
+        // file_put_contents($debugLog, date('Y-m-d H:i:s') . " - SUCCESS: No new items to insert. Done.\n", FILE_APPEND);
         return 0;
     }
 
@@ -831,12 +831,12 @@ function syncRspamdFile($path, $pdo, $lazy = false)
             $pdo->commit();
         } catch (Exception $e) {
             $pdo->rollBack();
-            file_put_contents($debugLog, date('Y-m-d H:i:s') . " - ERROR: Insert failed in chunk $i: " . $e->getMessage() . "\n", FILE_APPEND);
+            // file_put_contents($debugLog, date('Y-m-d H:i:s') . " - ERROR: Insert failed in chunk $i: " . $e->getMessage() . "\n", FILE_APPEND);
             error_log("Sync failed in chunk: " . $e->getMessage());
         }
     }
 
-    file_put_contents($debugLog, date('Y-m-d H:i:s') . " - SUCCESS: Sync Completed. Inserted $count items.\n", FILE_APPEND);
+    // file_put_contents($debugLog, date('Y-m-d H:i:s') . " - SUCCESS: Sync Completed. Inserted $count items.\n", FILE_APPEND);
     return $count;
 }
 
