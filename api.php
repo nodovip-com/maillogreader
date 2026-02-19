@@ -625,24 +625,27 @@ function syncRspamdFile($path, $pdo, $lazy = false)
     // This ensures we catch new logs regardless of how Rspamd writes the file.
     // 50MB total coverage is enough to catch recent logs even in large 170MB files.
 
+    // "Smart Read" Strategy
+    // If file is small (< 50MB), read the WHOLE thing to guarantee we don't miss anything.
+    // If file is huge (> 50MB), read Head (First 25MB) + Tail (Last 25MB).
+
     $chunks = [];
     $handle = fopen($path, 'r');
     $fsize = filesize($path);
-    $readSize = 25 * 1024 * 1024; // 25MB per end
+    $limit = 50 * 1024 * 1024; // 50MB threshold
+    $chunkSize = 25 * 1024 * 1024; // 25MB for head/tail chunks
 
-    // 1. Read Tail (Standard Append)
-    if ($fsize > $readSize) {
-        fseek($handle, -$readSize, SEEK_END);
-        $chunks[] = fread($handle, $readSize);
-    } else {
+    if ($fsize <= $limit) {
+        // Read valid full file
         $chunks[] = fread($handle, $fsize);
-    }
-
-    // 2. Read Head (Reverse Sort / Archive)
-    // Only if file is large enough to have a distinct head
-    if ($fsize > $readSize * 2) {
+    } else {
+        // Read Head
         rewind($handle);
-        $chunks[] = fread($handle, $readSize);
+        $chunks[] = fread($handle, $chunkSize);
+
+        // Read Tail
+        fseek($handle, -$chunkSize, SEEK_END);
+        $chunks[] = fread($handle, $chunkSize);
     }
 
     fclose($handle);
