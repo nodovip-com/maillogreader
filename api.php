@@ -555,13 +555,27 @@ function handleSyncLogs()
 
     // Prevent concurrent syncs using a lock file
     $lockFile = __DIR__ . '/sync.lock';
+    $debugLog = __DIR__ . '/sync_debug.txt';
+
+    // Check for stale lock (older than 10 minutes)
+    if (file_exists($lockFile) && (time() - filemtime($lockFile) > 600)) {
+        file_put_contents($debugLog, date('Y-m-d H:i:s') . " - WARN: Stale lock detected (>10m). Breaking lock.\n", FILE_APPEND);
+        @unlink($lockFile);
+    }
+
     $fp = fopen($lockFile, 'w+');
+
+    // Apply lock
     if (!flock($fp, LOCK_EX | LOCK_NB)) {
         // Lock failed, another sync is running
         fclose($fp);
+        file_put_contents($debugLog, date('Y-m-d H:i:s') . " - SKIP: Sync locked (already running).\n", FILE_APPEND);
         echo json_encode(['success' => false, 'error' => 'Sync already in progress. Skipping.']);
         return;
     }
+
+    // Log successful start
+    file_put_contents($debugLog, date('Y-m-d H:i:s') . " - START: Sync started.\n", FILE_APPEND);
 
     // Default to Lazy/Smart sync to prevent timeouts (504)
     // Only do a full, deep scan if explicitly requested (e.g., via CLI or special admin action)
