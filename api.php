@@ -702,16 +702,22 @@ function syncRspamdFile($path, $pdo, $lazy = false)
     if (!is_array($data))
         return 0;
 
+    // Debug logging
+    $debugLog = __DIR__ . '/sync_debug.txt';
+    $logMsg = date('Y-m-d H:i:s') . " - Parsed " . count($data) . " items from " . count($chunks) . " chunks.\n";
+    file_put_contents($debugLog, $logMsg, FILE_APPEND);
+
     $stmt = $pdo->prepare("INSERT IGNORE INTO mail_logs (
         log_hash, timestamp, unix_time, host, component, message, status, action, 
         score, symbols, queue_id, sender, recipient, size, user, scan_time
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
     $count = 0;
-    // If lazy, we only process the last entries to be super fast
-    if ($lazy) {
-        $data = array_slice($data, -500);
-    }
+
+    // CRITICAL FIX: Do NOT slice the array. 
+    // We read 50MB (Head+Tail). If the file is reverse sorted, the NEW logs are at index 0.
+    // If we slice -500, we take the END of the array (Oldest logs from Tail), discarding the New ones.
+    // We must process ALL found logs in the buffer. The read limit (50MB) is our safety cap.
 
     $chunkSize = 1000;
     $chunks = array_chunk($data, $chunkSize);
