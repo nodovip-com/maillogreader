@@ -716,12 +716,36 @@ function syncRspamdFile($path, $pdo, $lazy = false)
     if (empty($data))
         return 0;
 
-    if (!is_array($data))
-        return 0;
+    // Get latest timestamp from DB to skip old logs
+    // This dramatically speeds up sync by avoiding thousands of useless INSERT IGNORE calls
+    $latestTime = 0;
+    try {
+        $stmtMax = $pdo->query("SELECT MAX(unix_time) FROM mail_logs");
+        $latestTime = $stmtMax->fetchColumn();
+        if (!$latestTime)
+            $latestTime = 0;
+    } catch (Exception $e) {
+        $latestTime = 0;
+    }
 
     // Debug logging
     $debugLog = __DIR__ . '/sync_debug.txt';
     $countItems = count($data);
+
+    // Filter duplicates in PHP memory (Much faster / database friendly)
+    $newItems = [];
+    foreach ($data as $d) {
+        if (isset($d['unix_time']) && $d['unix_time'] >= $latestTime) {
+            $newItems[] = $d;
+        }
+    }
+
+    $countItemsFiltered = count($newItems);
+    $logMsg = date('Y-m-d H:i:s') . " - Read $countItems items. Filtered down to $countItemsFiltered new items (>= $latestTime).\n";
+    file_put_contents($debugLog, $logMsg, FILE_APPEND);
+
+    if (empty($newItems))
+        return 0;
 
     // Find min/max timestamp in the data to see what we actually parsed
     $minTime = PHP_INT_MAX;
@@ -751,13 +775,17 @@ function syncRspamdFile($path, $pdo, $lazy = false)
     // We must process ALL found logs in the buffer. The read limit (50MB) is our safety cap.
 
     $chunkSize = 1000;
-    $chunks = array_chunk($data, $chunkSize);
+    $chunks = array_chunk($newItems, $chunkSize);
 
     foreach ($chunks as $chunk) {
         $pdo->beginTransaction();
         try {
             foreach ($chunk as $entry) {
                 if (!isset($entry['unix_time']))
+                    continue;
+
+                // Double check timestamp just in case
+                if ($entry['unix_time'] < $latestTime)
                     continue;
                 $parsed = parseRspamdEntry($entry);
                 $logHash = $entry['message-id'] ?? md5(json_encode($entry));
