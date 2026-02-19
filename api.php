@@ -557,9 +557,9 @@ function handleSyncLogs()
     $lockFile = __DIR__ . '/sync.lock';
     $debugLog = __DIR__ . '/sync_debug.txt';
 
-    // Check for stale lock (older than 10 minutes)
-    if (file_exists($lockFile) && (time() - filemtime($lockFile) > 600)) {
-        file_put_contents($debugLog, date('Y-m-d H:i:s') . " - WARN: Stale lock detected (>10m). Breaking lock.\n", FILE_APPEND);
+    // Check for stale lock (older than 3 minutes) - Reduced from 10m to be more aggressive
+    if (file_exists($lockFile) && (time() - filemtime($lockFile) > 180)) {
+        file_put_contents($debugLog, date('Y-m-d H:i:s') . " - WARN: Stale lock detected (>3m). Breaking lock.\n", FILE_APPEND);
         @unlink($lockFile);
     }
 
@@ -573,6 +573,14 @@ function handleSyncLogs()
         echo json_encode(['success' => false, 'error' => 'Sync already in progress. Skipping.']);
         return;
     }
+
+    // Ensure lock is released even if script crashes
+    register_shutdown_function(function () use ($fp, $lockFile) {
+        flock($fp, LOCK_UN);
+        fclose($fp);
+        // We don't unlink here to avoid race conditions with check-and-open, 
+        // relying on flock is standard, but filemtime check handles the zombie file case.
+    });
 
     // Log successful start
     file_put_contents($debugLog, date('Y-m-d H:i:s') . " - START: Sync started.\n", FILE_APPEND);
@@ -728,8 +736,8 @@ function syncRspamdFile($path, $pdo, $lazy = false)
         $latestTime = 0;
     }
 
-    // Debug logging
-    $debugLog = __DIR__ . '/sync_debug.txt';
+    // Debug logging (Disabled for production)
+    // $debugLog = __DIR__ . '/sync_debug.txt';
     $countItems = count($data);
 
     // Filter duplicates in PHP memory (Much faster / database friendly)
@@ -748,19 +756,19 @@ function syncRspamdFile($path, $pdo, $lazy = false)
         return 0;
 
     // Find min/max timestamp in the data to see what we actually parsed
-    $minTime = PHP_INT_MAX;
-    $maxTime = 0;
-    foreach ($data as $d) {
-        if (isset($d['unix_time'])) {
-            if ($d['unix_time'] < $minTime)
-                $minTime = $d['unix_time'];
-            if ($d['unix_time'] > $maxTime)
-                $maxTime = $d['unix_time'];
-        }
-    }
+    // $minTime = PHP_INT_MAX;
+    // $maxTime = 0;
+    // foreach ($data as $d) {
+    //     if (isset($d['unix_time'])) {
+    //         if ($d['unix_time'] < $minTime)
+    //             $minTime = $d['unix_time'];
+    //         if ($d['unix_time'] > $maxTime)
+    //             $maxTime = $d['unix_time'];
+    //     }
+    // }
 
-    $logMsg = date('Y-m-d H:i:s') . " - Parsed $countItems items. Oldest: " . date('Y-m-d H:i:s', $minTime) . " Newest: " . date('Y-m-d H:i:s', $maxTime) . ".\n";
-    file_put_contents($debugLog, $logMsg, FILE_APPEND);
+    // $logMsg = date('Y-m-d H:i:s') . " - Parsed $countItems items. Oldest: " . date('Y-m-d H:i:s', $minTime) . " Newest: " . date('Y-m-d H:i:s', $maxTime) . ".\n";
+    // file_put_contents($debugLog, $logMsg, FILE_APPEND);
 
     $stmt = $pdo->prepare("INSERT IGNORE INTO mail_logs (
         log_hash, timestamp, unix_time, host, component, message, status, action, 
